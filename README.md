@@ -105,3 +105,7 @@ make check   # typecheck, tests del Worker, de la CLI y del SDK, y compilación 
 
 La documentación está en [docs/](docs/Inicio.md). Las reglas sobre qué nunca debe entrar al repo están
 en [docs/publicacion.md](docs/publicacion.md).
+
+## Licencia
+
+[MIT](LICENSE)
