@@ -15,8 +15,18 @@ export function post(path: string, body: unknown, headers: Record<string, string
 export const syncRequest = (refs: unknown, fcmToken?: unknown): Request =>
   post("/v1/sync", { refs, ...(fcmToken !== undefined && { fcm_token: fcmToken }) });
 
-export const replyRequest = (ref: string, replyId: string, text = "Texto inventado"): Request =>
-  post("/v1/admin/replies", { ref, reply_id: replyId, text }, { authorization: `Bearer ${ADMIN_TOKEN}` });
+export const replyRequest = (
+  ref: string,
+  replyId: string,
+  text = "Texto inventado",
+  comment = "Comentario inventado",
+  userId?: string | null,
+): Request =>
+  post(
+    "/v1/admin/replies",
+    { ref, reply_id: replyId, text, comment, comment_at: 1_700_000_000_000, ...(userId !== undefined && { user_id: userId }) },
+    { authorization: `Bearer ${ADMIN_TOKEN}` },
+  );
 
 export interface FakeCall {
   url: string;

@@ -22,6 +22,9 @@ export type Target =
 export interface Comment {
   shortId: string;
   date: string;
+  commentAt: number;
+  /** Solo para enviarlo al Worker: la CLI nunca lo muestra. */
+  userId: string | null;
   locale: string;
   release: string;
   eventCount: number;
@@ -108,6 +111,8 @@ async function toComment(config: SentryConfig, fetcher: typeof fetch, issue: Raw
   return {
     shortId: issue.shortId,
     date: issue.firstSeen.slice(0, 10),
+    commentAt: Date.parse(issue.firstSeen),
+    userId: event.user?.id ?? null,
     locale: event.contexts?.culture?.locale ?? "",
     // `bundle@1.2.3+45`: solo interesa la versión.
     release: release.split("@").at(-1) ?? "",

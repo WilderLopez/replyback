@@ -1,14 +1,11 @@
-import { createReply, isAuthorized, replyStatus } from "./admin";
+import { createReply, deleteUser, isAuthorized, replyStatus } from "./admin";
 import type { AppEnv } from "./env";
 import type { Fetch } from "./fcm";
 import { BodyError, json } from "./http";
 import { Store } from "./store";
-import { sync } from "./sync";
+import { deleteData, sync } from "./sync";
 
-const DAY_MS = 24 * 3600 * 1000;
-const DELIVERED_RETENTION_MS = 30 * DAY_MS;
-const UNDELIVERED_RETENTION_MS = 180 * DAY_MS;
-const TOKEN_RETENTION_MS = 180 * DAY_MS;
+const TOKEN_RETENTION_MS = 180 * 24 * 3600 * 1000;
 
 // `fetch` necesita su `this` original, así que no se pasa suelto.
 const globalFetch: Fetch = (input, init) => fetch(input, init);
@@ -20,6 +17,7 @@ export async function handle(request: Request, env: AppEnv, fetcher: Fetch = glo
 
   try {
     if (route === "POST /v1/sync") return await sync(request, env, store, now);
+    if (route === "POST /v1/delete") return await deleteData(request, env, store);
 
     if (route === "POST /v1/admin/replies") {
       if (!(await isAuthorized(request, env))) return json({ error: "unauthorized" }, 401);
@@ -29,6 +27,11 @@ export async function handle(request: Request, env: AppEnv, fetcher: Fetch = glo
     if (route === "POST /v1/admin/replies/status") {
       if (!(await isAuthorized(request, env))) return json({ error: "unauthorized" }, 401);
       return await replyStatus(request, store);
+    }
+
+    if (route === "POST /v1/admin/delete") {
+      if (!(await isAuthorized(request, env))) return json({ error: "unauthorized" }, 401);
+      return await deleteUser(request, store);
     }
   } catch (error) {
     if (error instanceof BodyError) {
@@ -42,11 +45,7 @@ export async function handle(request: Request, env: AppEnv, fetcher: Fetch = glo
 }
 
 export async function cleanup(env: AppEnv, now: number): Promise<void> {
-  await new Store(env.DB).cleanup({
-    delivered: now - DELIVERED_RETENTION_MS,
-    undelivered: now - UNDELIVERED_RETENTION_MS,
-    tokens: now - TOKEN_RETENTION_MS,
-  });
+  await new Store(env.DB).cleanupTokens(now - TOKEN_RETENTION_MS);
 }
 
 export default {

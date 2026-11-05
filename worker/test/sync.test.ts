@@ -77,8 +77,15 @@ describe("POST /v1/sync", () => {
     const response = await handle(syncRequest([mine]), env, failingFetch);
     const { replies } = await response.json<{ replies: Array<Record<string, unknown>> }>();
     expect(replies).toHaveLength(1);
-    expect(replies[0]).toMatchObject({ reply_id: replyId, ref: mine, text: "Para mí" });
-    expect(replies[0]).not.toHaveProperty("delivered_at");
+    expect(replies[0]).toMatchObject({
+      reply_id: replyId,
+      ref: mine,
+      text: "Para mí",
+      comment: "Comentario inventado",
+      comment_at: 1_700_000_000_000,
+      delivered_at: null,
+    });
+    expect(replies[0]).not.toHaveProperty("pushed_at");
 
     const stored = await env.DB.prepare("SELECT delivered_at FROM replies WHERE reply_id = ?")
       .bind(replyId)
@@ -98,8 +105,9 @@ describe("POST /v1/sync", () => {
     await env.DB.prepare("UPDATE replies SET delivered_at = 1 WHERE reply_id = ?").bind(replyId).run();
 
     const response = await handle(syncRequest([ref]), env, failingFetch);
-    const { replies } = await response.json<{ replies: unknown[] }>();
+    const { replies } = await response.json<{ replies: Array<{ delivered_at: number | null }> }>();
     expect(replies).toHaveLength(1);
+    expect(replies[0]?.delivered_at).toBe(1);
     const mark = await env.DB.prepare("SELECT delivered_at FROM replies WHERE reply_id = ?")
       .bind(replyId)
       .first("delivered_at");
@@ -121,6 +129,41 @@ describe("POST /v1/sync", () => {
     const response = await handle(request, limited, failingFetch);
     expect(response.status).toBe(429);
     expect(keys).toEqual(["203.0.113.1"]);
+  });
+});
+
+describe("POST /v1/delete", () => {
+  it.each([
+    ["sin refs", {}],
+    ["ref inválido", { refs: ["x"] }],
+    ["demasiados refs", { refs: Array.from({ length: 21 }, uuid) }],
+  ])("rechaza %s", async (_name, body) => {
+    const response = await handle(post("/v1/delete", body), env, failingFetch);
+    expect(response.status).toBe(400);
+  });
+
+  it("borra las respuestas y el token de esos refs, y nada más", async () => {
+    const [mine, other] = [uuid(), uuid()];
+    await handle(syncRequest([mine, other], "token"), env, failingFetch);
+    const { fetcher } = fakeFetch();
+    await handle(replyRequest(mine, uuid()), env, fetcher);
+    await handle(replyRequest(other, uuid()), env, fetcher);
+
+    const response = await handle(post("/v1/delete", { refs: [mine.toUpperCase()] }), env, failingFetch);
+    await expect(response.json()).resolves.toEqual({ status: "deleted" });
+
+    const count = (table: string, ref: string) =>
+      env.DB.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE ref = ?`).bind(ref).first("n");
+    await expect(count("replies", mine)).resolves.toBe(0);
+    await expect(tokenFor(mine)).resolves.toBeNull();
+    await expect(count("replies", other)).resolves.toBe(1);
+    await expect(tokenFor(other)).resolves.toBe("token");
+  });
+
+  it("aplica el rate limit", async () => {
+    const limited = { ...env, RATE_LIMITER: { limit: async () => ({ success: false }) } };
+    const response = await handle(post("/v1/delete", { refs: [uuid()] }), limited, failingFetch);
+    expect(response.status).toBe(429);
   });
 });
 

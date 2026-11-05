@@ -19,5 +19,9 @@ export function splitRef(message: string): { text: string; ref: string | null } 
 export const legacyRef = (userId: string, deviceAppHash: string): string =>
   hashAsUuid(`replyback:${userId}:${deviceAppHash}`);
 
-/** Mismo texto para el mismo `ref`, misma clave: repetir el envío no duplica la respuesta. */
-export const replyId = (ref: string, text: string): string => hashAsUuid(`${ref}\n${text}`);
+/**
+ * Mismo texto al mismo comentario, misma clave: repetir el envío no duplica la respuesta. Incluye el
+ * comentario porque dos comentarios antiguos de la misma persona y teléfono comparten `ref`.
+ */
+export const replyId = (ref: string, comment: string, text: string): string =>
+  hashAsUuid(JSON.stringify([ref, comment, text]));

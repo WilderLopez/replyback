@@ -28,7 +28,7 @@ Volver a [Inicio](Inicio.md).
 - [x] Envío de push por FCM, probado contra un FCM simulado.
 - [x] Limpieza con Cron Trigger.
 - [x] Desplegar y enviar un push real a un dispositivo propio.
-- [x] CLI con `list`, `show` y `reply`, incluida la derivación del `ref` antiguo, probada con tests.
+- [x] CLI con `list`, `show`, `reply` y `forget`, incluida la derivación del `ref` antiguo, probada con tests.
 - [x] Probar la lectura de la CLI contra Sentry y el Worker reales.
 - [ ] Pruebas de extremo a extremo con un dispositivo real.
 

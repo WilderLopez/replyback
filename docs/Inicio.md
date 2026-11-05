@@ -26,7 +26,8 @@ la recoge y la muestra.
 - **Simple:** un Worker con dos rutas, una para la app y otra para administración, sin login de
   usuario ni servidor que mantener.
 - **Sin costo al empezar:** cabe en los planes gratuitos de Cloudflare y FCM.
-- **Datos mínimos:** el Worker no guarda ni el comentario ni datos personales del usuario.
+- **La nube como fuente de verdad:** el Worker guarda el comentario, la respuesta y el histórico. El
+  dispositivo solo guarda las llaves para leerlos y una caché.
 
 ## Notas
 

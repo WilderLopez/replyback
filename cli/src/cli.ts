@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { parseArgs } from "node:util";
 import { replyId } from "./ref.ts";
 import { getComment, listComments, SentryError, type Comment, type SentryConfig } from "./sentry.ts";
-import { fetchReplies, sendReply, WorkerError, type StoredReply, type WorkerConfig } from "./worker.ts";
+import { deleteUser, fetchReplies, sendReply, WorkerError, type StoredReply, type WorkerConfig } from "./worker.ts";
 
 const MAX_TEXT_LENGTH = 4000;
 const PREVIEW_LENGTH = 60;
@@ -14,6 +14,7 @@ const USAGE = `Uso: replyback [--deployment <nombre>] <comando>
   show <issue>                        Muestra un comentario y sus respuestas.
   reply <issue> "texto" [--yes]       Responde. Pide confirmación salvo con --yes.
   reply <issue> --file <ruta> [--yes] Lee el texto de un fichero.
+  forget <issue> [--yes]              Borra del Worker todo lo de la cuenta que envió ese comentario.
 
 <issue> es el ID corto de Sentry. La configuración se lee del entorno o de
 deployments/<nombre>/.env (ver deployments/example/.env.example).`;
@@ -54,6 +55,10 @@ const targetLabel = (comment: Comment): string =>
 
 const refOf = (comment: Comment): string | null => (comment.target.kind === "none" ? null : comment.target.ref);
 
+/** Dos comentarios antiguos pueden compartir `ref`: cada respuesta dice a cuál contesta. */
+const repliesTo = (comment: Comment, byRef: Map<string, StoredReply[]>): StoredReply[] =>
+  (byRef.get(refOf(comment) ?? "") ?? []).filter((reply) => reply.comment === null || reply.comment === comment.text);
+
 function replyState(replies: StoredReply[]): string {
   if (replies.length === 0) return "sin responder";
   return replies.some((reply) => reply.delivered_at !== null) ? "entregada" : "respondida";
@@ -73,7 +78,7 @@ async function list(config: Config, deps: Deps, pending: boolean, all: boolean):
   const replies = await fetchReplies(config.worker, deps.fetch, refs);
 
   const rows = comments
-    .map((comment) => ({ comment, state: replyState(replies.get(refOf(comment) ?? "") ?? []) }))
+    .map((comment) => ({ comment, state: replyState(repliesTo(comment, replies)) }))
     .filter(({ state }) => !pending || state === "sin responder");
 
   if (rows.length === 0) {
@@ -116,7 +121,7 @@ async function show(config: Config, deps: Deps, shortId: string): Promise<number
   }
   printComment(deps, comment);
   const ref = refOf(comment);
-  const replies = ref ? ((await fetchReplies(config.worker, deps.fetch, [ref])).get(ref) ?? []) : [];
+  const replies = ref ? repliesTo(comment, await fetchReplies(config.worker, deps.fetch, [ref])) : [];
   for (const reply of replies) {
     deps.out("");
     deps.out(`Respuesta del ${dateOf(reply.created_at)} (aviso: ${dateOf(reply.pushed_at)}, entregada: ${dateOf(reply.delivered_at)})`);
@@ -161,7 +166,7 @@ async function reply(
     return 1;
   }
 
-  const existing = (await fetchReplies(config.worker, deps.fetch, [ref])).get(ref) ?? [];
+  const existing = repliesTo(comment, await fetchReplies(config.worker, deps.fetch, [ref]));
   printComment(deps, comment);
   deps.out("");
   if (existing.length > 0) deps.out(`Atención: ya tiene ${existing.length} respuesta(s).`);
@@ -181,9 +186,44 @@ async function reply(
     }
   }
 
-  const result = await sendReply(config.worker, deps.fetch, { ref, reply_id: replyId(ref, text), text });
+  const result = await sendReply(config.worker, deps.fetch, {
+    ref,
+    reply_id: replyId(ref, comment.text, text),
+    text,
+    comment: comment.text,
+    comment_at: comment.commentAt,
+    user_id: comment.userId,
+  });
   deps.out(`Respuesta guardada: ${PUSH_MESSAGES[result.push] ?? result.push}.`);
   return result.push === "failed" ? 1 : 0;
+}
+
+async function forget(config: Config, deps: Deps, shortId: string, skipConfirmation: boolean): Promise<number> {
+  const comment = await getComment(config.sentry, deps.fetch, shortId);
+  if (!comment) {
+    deps.err(`No existe el comentario ${shortId} en este proyecto.`);
+    return 1;
+  }
+  if (!comment.userId) {
+    deps.err(`${comment.shortId} no identifica a ninguna cuenta.`);
+    return 1;
+  }
+  printComment(deps, comment);
+  deps.out("");
+  deps.out("Se borrará del Worker todo lo de la cuenta que envió este comentario.");
+  if (!skipConfirmation) {
+    const confirmed = await deps.confirm("Escribe «enviar» para confirmar: ");
+    if (confirmed === null) {
+      deps.err("Sin borrar: no hay terminal para confirmar. Usa --yes solo si ya lo revisaste.");
+      return 1;
+    }
+    if (!confirmed) {
+      deps.out("Sin borrar.");
+      return 0;
+    }
+  }
+  deps.out(`Respuestas borradas: ${await deleteUser(config.worker, deps.fetch, comment.userId)}.`);
+  return 0;
 }
 
 export async function run(argv: string[], deps: Deps): Promise<number> {
@@ -206,6 +246,9 @@ export async function run(argv: string[], deps: Deps): Promise<number> {
     }
     if (command === "show" && shortId) {
       return await show(loadConfig(deps.env), deps, shortId);
+    }
+    if (command === "forget" && shortId && !inlineText) {
+      return await forget(loadConfig(deps.env), deps, shortId, values.yes);
     }
     if (command === "reply" && shortId && (inlineText === undefined) !== (values.file === undefined)) {
       const text = (inlineText ?? (await readFile(values.file ?? "", "utf8"))).trim();

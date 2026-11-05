@@ -9,6 +9,7 @@ export interface StoredReply {
   reply_id: string;
   ref: string;
   text: string;
+  comment: string | null;
   created_at: number;
   pushed_at: number | null;
   delivered_at: number | null;
@@ -34,7 +35,7 @@ async function post(config: WorkerConfig, fetcher: typeof fetch, path: string, b
 export const sendReply = async (
   config: WorkerConfig,
   fetcher: typeof fetch,
-  body: { ref: string; reply_id: string; text: string },
+  body: { ref: string; reply_id: string; text: string; comment: string; comment_at: number; user_id: string | null },
 ): Promise<SendResult> => (await post(config, fetcher, "/v1/admin/replies", body)) as SendResult;
 
 export async function fetchReplies(
@@ -52,3 +53,6 @@ export async function fetchReplies(
   }
   return byRef;
 }
+
+export const deleteUser = async (config: WorkerConfig, fetcher: typeof fetch, userId: string): Promise<number> =>
+  ((await post(config, fetcher, "/v1/admin/delete", { user_id: userId })) as { replies: number }).replies;

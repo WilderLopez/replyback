@@ -32,9 +32,11 @@ test("legacyRef coincide con los vectores compartidos", () => {
   }
 });
 
-test("replyId es estable y depende del ref y del texto", () => {
-  assert.equal(replyId(REF, "Hola"), replyId(REF, "Hola"));
-  assert.notEqual(replyId(REF, "Hola"), replyId(REF, "Adiós"));
-  assert.notEqual(replyId(REF, "Hola"), replyId("11111111-2222-4333-8444-555555555556", "Hola"));
-  assert.match(replyId(REF, "Hola"), /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+test("replyId es estable y depende del ref, del comentario y del texto", () => {
+  assert.equal(replyId(REF, "Comentario", "Hola"), replyId(REF, "Comentario", "Hola"));
+  assert.notEqual(replyId(REF, "Comentario", "Hola"), replyId(REF, "Comentario", "Adiós"));
+  assert.notEqual(replyId(REF, "Comentario", "Hola"), replyId(REF, "Otro", "Hola"));
+  assert.notEqual(replyId(REF, "Comentario", "Hola"), replyId("11111111-2222-4333-8444-555555555556", "Comentario", "Hola"));
+  assert.notEqual(replyId(REF, "a", "b"), replyId(REF, "a\nb", ""), "no se confunden al concatenar");
+  assert.match(replyId(REF, "Comentario", "Hola"), /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
 });

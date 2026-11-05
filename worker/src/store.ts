@@ -2,12 +2,25 @@ export interface Reply {
   reply_id: string;
   ref: string;
   text: string;
+  comment: string | null;
+  comment_at: number | null;
+  user_id: string | null;
   created_at: number;
   pushed_at: number | null;
   delivered_at: number | null;
 }
 
-export type DeliveredReply = Pick<Reply, "reply_id" | "ref" | "text" | "created_at">;
+/** Lo que recibe la app: nunca `user_id`. */
+export type DeliveredReply = Omit<Reply, "pushed_at" | "user_id">;
+
+export interface NewReply {
+  replyId: string;
+  ref: string;
+  text: string;
+  comment: string;
+  commentAt: number;
+  userId: string | null;
+}
 
 export class Store {
   constructor(private readonly db: D1Database) {}
@@ -28,11 +41,17 @@ export class Store {
     await this.db.prepare("DELETE FROM tokens WHERE ref = ?").bind(ref).run();
   }
 
-  /** Devuelve las respuestas y marca las nuevas como entregadas. La app elimina duplicados por `reply_id`. */
+  /**
+   * Devuelve las respuestas y marca las nuevas como entregadas. `delivered_at` es el valor anterior a
+   * esta consulta: si ya tenía fecha, otra instalación la recogió antes.
+   */
   async collect(refs: string[], now: number): Promise<DeliveredReply[]> {
     const marks = refs.map(() => "?").join(", ");
     const { results } = await this.db
-      .prepare(`SELECT reply_id, ref, text, created_at FROM replies WHERE ref IN (${marks}) ORDER BY created_at`)
+      .prepare(
+        `SELECT reply_id, ref, text, comment, comment_at, created_at, delivered_at
+         FROM replies WHERE ref IN (${marks}) ORDER BY created_at`,
+      )
       .bind(...refs)
       .all<DeliveredReply>();
     if (results.length > 0) {
@@ -45,16 +64,16 @@ export class Store {
   }
 
   /** Inserta la respuesta. Si el `reply_id` ya existe, devuelve la que había. */
-  async saveReply(reply_id: string, ref: string, text: string, now: number): Promise<Reply | null> {
+  async saveReply(reply: NewReply, now: number): Promise<Reply | null> {
     const { meta } = await this.db
       .prepare(
-        `INSERT INTO replies (reply_id, ref, text, created_at) VALUES (?, ?, ?, ?)
+        `INSERT INTO replies (reply_id, ref, text, comment, comment_at, user_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(reply_id) DO NOTHING`,
       )
-      .bind(reply_id, ref, text, now)
+      .bind(reply.replyId, reply.ref, reply.text, reply.comment, reply.commentAt, reply.userId, now)
       .run();
     if (meta.changes > 0) return null;
-    return this.db.prepare("SELECT * FROM replies WHERE reply_id = ?").bind(reply_id).first<Reply>();
+    return this.db.prepare("SELECT * FROM replies WHERE reply_id = ?").bind(reply.replyId).first<Reply>();
   }
 
   async replies(refs: string[]): Promise<Reply[]> {
@@ -70,23 +89,35 @@ export class Store {
     await this.db.prepare("UPDATE replies SET pushed_at = ? WHERE reply_id = ?").bind(now, reply_id).run();
   }
 
-  /** Conserva los tokens de los `ref` con respuestas sin entregar. */
-  async cleanup(limits: { delivered: number; undelivered: number; tokens: number }): Promise<void> {
+  /** Borra todo lo de esos `ref`, por ejemplo al eliminar la cuenta en la app. */
+  async deleteRefs(refs: string[]): Promise<void> {
+    const marks = refs.map(() => "?").join(", ");
     await this.db.batch([
-      this.db
-        .prepare(
-          `DELETE FROM replies
-           WHERE (delivered_at IS NOT NULL AND delivered_at < ?)
-              OR (delivered_at IS NULL AND created_at < ?)`,
-        )
-        .bind(limits.delivered, limits.undelivered),
-      this.db
-        .prepare(
-          `DELETE FROM tokens
-           WHERE updated_at < ?
-             AND ref NOT IN (SELECT ref FROM replies WHERE delivered_at IS NULL)`,
-        )
-        .bind(limits.tokens),
+      this.db.prepare(`DELETE FROM replies WHERE ref IN (${marks})`).bind(...refs),
+      this.db.prepare(`DELETE FROM tokens WHERE ref IN (${marks})`).bind(...refs),
     ]);
+  }
+
+  /** Borra todo lo de una cuenta, también si se perdieron sus llaves. Devuelve las filas borradas. */
+  async deleteUser(userId: string): Promise<number> {
+    const [, deleted] = await this.db.batch([
+      this.db
+        .prepare("DELETE FROM tokens WHERE ref IN (SELECT ref FROM replies WHERE user_id = ?)")
+        .bind(userId),
+      this.db.prepare("DELETE FROM replies WHERE user_id = ?").bind(userId),
+    ]);
+    return deleted?.meta.changes ?? 0;
+  }
+
+  /** El histórico no caduca. Solo se borran los tokens inactivos sin respuestas por entregar. */
+  async cleanupTokens(before: number): Promise<void> {
+    await this.db
+      .prepare(
+        `DELETE FROM tokens
+         WHERE updated_at < ?
+           AND ref NOT IN (SELECT ref FROM replies WHERE delivered_at IS NULL)`,
+      )
+      .bind(before)
+      .run();
   }
 }

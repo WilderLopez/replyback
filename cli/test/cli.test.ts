@@ -77,6 +77,7 @@ function harness(options: { replies?: unknown[]; confirm?: boolean | null; sendP
       }
       if (options.workerStatus) return new Response("{}", { status: options.workerStatus });
       if (url.pathname === "/v1/admin/replies/status") return Response.json({ replies: options.replies ?? [] });
+      if (url.pathname === "/v1/admin/delete") return Response.json({ status: "deleted", replies: 2 });
       if (url.pathname === "/v1/admin/replies") {
         return Response.json({ status: "stored", push: options.sendPush ?? "sent" });
       }
@@ -129,7 +130,7 @@ test("list consulta el estado por ref, incluidos los derivados", async () => {
 });
 
 test("list --pending oculta los ya respondidos y muestra el estado de los demás", async () => {
-  const stored = { reply_id: "r", ref: REF, text: "t", created_at: 1, pushed_at: 1, delivered_at: 2 };
+  const stored = { reply_id: "r", ref: REF, text: "t", comment: null, created_at: 1, pushed_at: 1, delivered_at: 2 };
   const shown = harness({ replies: [stored] });
   await run(["list"], shown.deps);
   assert.match(shown.out[0] ?? "", /DEMO-A.*entregada/);
@@ -157,7 +158,7 @@ test("list sigue la paginación solo mientras haya resultados", async () => {
 });
 
 test("show muestra el comentario sin el ref y sus respuestas", async () => {
-  const stored = { reply_id: "r", ref: REF, text: "Ya está corregido", created_at: 0, pushed_at: null, delivered_at: null };
+  const stored = { reply_id: "r", ref: REF, text: "Ya está corregido", comment: null, created_at: 0, pushed_at: null, delivered_at: null };
   const h = harness({ replies: [stored] });
   assert.equal(await run(["show", "DEMO-A"], h.deps), 0);
   const text = h.out.join("\n");
@@ -201,8 +202,11 @@ test("reply envía a un comentario con ref tras confirmar", async () => {
   const [send] = h.sends();
   assert.deepEqual(JSON.parse(String(send?.init?.body)), {
     ref: REF,
-    reply_id: replyId(REF, "Ya está corregido"),
+    reply_id: replyId(REF, "Comentario con ref", "Ya está corregido"),
     text: "Ya está corregido",
+    comment: "Comentario con ref",
+    comment_at: Date.parse("2026-10-01T10:00:00Z"),
+    user_id: USER_ID,
   });
   assert.match(h.out.at(-1) ?? "", /aviso enviado/);
   assertNoPersonalData([...h.out, ...h.err]);
@@ -213,6 +217,18 @@ test("reply deriva el ref de un comentario antiguo", async () => {
   assert.equal(await run(["reply", "DEMO-B", "Hola"], h.deps), 0);
   assert.equal(JSON.parse(String(h.sends()[0]?.init?.body)).ref, LEGACY_REF);
   assert.match(h.out.at(-1) ?? "", /cuando la app consulte/);
+});
+
+test("dos comentarios antiguos con el mismo ref tienen estado y respuesta propios", async () => {
+  const stored = { reply_id: "r", ref: LEGACY_REF, text: "t", comment: "Comentario antiguo", created_at: 1, pushed_at: null, delivered_at: 2 };
+  const shown = harness({ replies: [stored] });
+  await run(["list"], shown.deps);
+  assert.match(shown.out.find((line) => line.includes("DEMO-B")) ?? "", /entregada/);
+  assert.match(shown.out.find((line) => line.includes("DEMO-D")) ?? "", /sin responder/);
+
+  const sibling = harness({ confirm: false, replies: [stored] });
+  await run(["reply", "DEMO-D", "Hola"], sibling.deps);
+  assert.ok(!sibling.out.join("\n").includes("ya tiene"));
 });
 
 test("reply no envía si se responde otra cosa a la confirmación", async () => {
@@ -236,7 +252,7 @@ test("reply --yes no pregunta", async () => {
 });
 
 test("reply avisa si ya hay respuestas", async () => {
-  const stored = { reply_id: "r", ref: REF, text: "t", created_at: 1, pushed_at: 1, delivered_at: null };
+  const stored = { reply_id: "r", ref: REF, text: "t", comment: null, created_at: 1, pushed_at: 1, delivered_at: null };
   const h = harness({ confirm: false, replies: [stored] });
   await run(["reply", "DEMO-A", "Hola"], h.deps);
   assert.ok(h.out.join("\n").includes("ya tiene 1 respuesta"));
@@ -278,6 +294,27 @@ test("reply devuelve error si el aviso falló, para reintentar", async () => {
   const h = harness({ sendPush: "failed" });
   assert.equal(await run(["reply", "DEMO-A", "Hola", "--yes"], h.deps), 1);
   assert.match(h.out.at(-1) ?? "", /reintentarlo/);
+});
+
+test("forget borra la cuenta del comentario sin imprimir su ID", async () => {
+  const h = harness({ confirm: true });
+  assert.equal(await run(["forget", "DEMO-A"], h.deps), 0);
+  const call = h.calls.find((candidate) => candidate.url.endsWith("/v1/admin/delete"));
+  assert.deepEqual(JSON.parse(String(call?.init?.body)), { user_id: USER_ID });
+  assert.match(h.out.at(-1) ?? "", /Respuestas borradas: 2/);
+  assertNoPersonalData([...h.out, ...h.err]);
+});
+
+test("forget no borra sin confirmación ni sin cuenta", async () => {
+  const denied = harness({ confirm: false });
+  assert.equal(await run(["forget", "DEMO-A"], denied.deps), 0);
+  const noTerminal = harness({ confirm: null });
+  assert.equal(await run(["forget", "DEMO-A"], noTerminal.deps), 1);
+  const noUser = harness({ confirm: true });
+  assert.equal(await run(["forget", "DEMO-C"], noUser.deps), 1);
+  for (const h of [denied, noTerminal, noUser]) {
+    assert.ok(!h.calls.some((call) => call.url.endsWith("/v1/admin/delete")));
+  }
 });
 
 test("informa de los errores del Worker", async () => {

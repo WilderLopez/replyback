@@ -86,6 +86,31 @@ no encontrar nada.
 Cada proyecto tiene su Worker, su base D1 y sus secretos. Los datos no se mezclan y no hay un
 servidor central.
 
+### El Worker como fuente de verdad
+
+El comentario original viaja con la respuesta y se guarda en el Worker, junto con el histórico. Así
+los hilos no dependen del dispositivo, los comentarios antiguos también muestran su original y los
+datos quedan listos para migrar a un sistema mayor.
+
+El Worker también guarda el `user_id` del evento de Sentry, para saber de qué cuenta es cada comentario,
+migrar y borrar datos aunque se hayan perdido las llaves. Lo envía la CLI y nunca se devuelve a la app.
+
+Son datos personales en la nube, y sin caducidad. Por eso existen `POST /v1/delete` y
+`POST /v1/admin/delete`, y cada proyecto debe reflejarlo en su política de privacidad.
+
+El comentario lo envía la CLI al responder, no la app. Una ruta pública que aceptara texto libre
+permitiría llenar la base de datos. Por eso un comentario sin responder solo existe como copia local,
+y no aparece en otro teléfono hasta que tenga respuesta.
+
+### Las llaves en el Llavero
+
+Sin el `ref` no se pueden leer los datos, así que tener el comentario en la nube no basta para cambiar
+de teléfono. Los `ref` se guardan en el Llavero con sincronización de iCloud: sobreviven a reinstalar
+la app y pasan a otro iPhone con el mismo Apple ID, si el usuario tiene activado el Llavero de iCloud.
+
+Se guardan por cuenta. Al cerrar sesión los datos se ocultan sin borrarse, y otra cuenta en el mismo
+teléfono no los ve.
+
 ### Sin correo
 
 La respuesta se entrega dentro de la app. El envío de correo de Cloudflare a destinatarios
@@ -104,7 +129,19 @@ pendientes, y al recibir el push.
 ```
 
 ```json
-{ "replies": [{ "ref": "<uuid>", "reply_id": "<uuid>", "text": "...", "created_at": 0 }] }
+{
+  "replies": [
+    {
+      "ref": "<uuid>",
+      "reply_id": "<uuid>",
+      "text": "...",
+      "comment": "...",
+      "comment_at": 0,
+      "created_at": 0,
+      "delivered_at": null
+    }
+  ]
+}
 ```
 
 Registra o actualiza el token de cada `ref` y devuelve sus respuestas. Una sola ruta cubre el
@@ -113,7 +150,7 @@ registro, el cambio de token y la recogida.
 ### `POST /v1/admin/replies` (con `ADMIN_TOKEN`)
 
 ```json
-{ "ref": "<uuid>", "reply_id": "<uuid>", "text": "..." }
+{ "ref": "<uuid>", "reply_id": "<uuid>", "text": "...", "comment": "...", "comment_at": 0, "user_id": "<id>" }
 ```
 
 Guarda la respuesta y envía el push. La clave `reply_id` la genera quien llama, de modo que
@@ -130,6 +167,23 @@ porque la respuesta ya está guardada.
 
 Si el `ref` todavía no tiene token, la respuesta queda guardada y se entrega en el siguiente
 `sync`.
+
+### `POST /v1/admin/delete` (con `ADMIN_TOKEN`)
+
+```json
+{ "user_id": "<id>" }
+```
+
+Borra las respuestas y los tokens de una cuenta, también si se perdieron sus llaves.
+
+### `POST /v1/delete` (pública)
+
+```json
+{ "refs": ["<uuid>"] }
+```
+
+Borra las respuestas y el token de esos `ref`. Quien tiene un `ref` puede leer sus datos, y también
+borrarlos. La app lo usa al eliminar la cuenta.
 
 ## Comentarios antiguos
 
@@ -158,7 +212,7 @@ ref antiguo     = SHA256("replyback:" + user_id + ":" + device_app_hash), con fo
 - El ID de usuario no es secreto, pero `identifierForVendor` sí: solo lo conocen el dispositivo y, a
   través del hash, Sentry. Sin él no se puede calcular el `ref`.
 - Incluir el ID de usuario evita que otra cuenta en el mismo teléfono vea la respuesta.
-- Al Worker solo llega el `ref`, nunca el identificador del dispositivo ni el ID de usuario.
+- Al Worker llega el `ref`, nunca el identificador del dispositivo ni el ID de usuario.
 
 ### Límites
 
@@ -187,15 +241,22 @@ CREATE TABLE replies (
   ref TEXT NOT NULL,
   text TEXT NOT NULL,
   created_at INTEGER NOT NULL,
+  comment TEXT,
+  comment_at INTEGER,
+  user_id TEXT,
   pushed_at INTEGER,
   delivered_at INTEGER
 );
 
 CREATE INDEX replies_ref ON replies(ref);
+CREATE INDEX replies_user_id ON replies(user_id);
 ```
 
-Un Cron Trigger borra a diario las respuestas entregadas hace más de 30 días, las que nadie recogió en
-180 días, y los tokens sin actividad en 180 días que no tengan respuestas pendientes.
+El comentario va en cada respuesta y no por `ref`, porque dos comentarios antiguos de la misma persona y
+teléfono comparten `ref`.
+
+El histórico no caduca: solo se borra con `POST /v1/delete`. Un Cron Trigger borra a diario los tokens
+sin actividad en 180 días que no tengan respuestas pendientes.
 
 ## CLI
 
@@ -204,6 +265,7 @@ replyback [--deployment <nombre>] list [--pending] [--all]
 replyback [--deployment <nombre>] show <issue>
 replyback [--deployment <nombre>] reply <issue> "Texto de la respuesta" [--yes]
 replyback [--deployment <nombre>] reply <issue> --file <ruta> [--yes]
+replyback [--deployment <nombre>] forget <issue> [--yes]
 ```
 
 `<issue>` es el ID corto de Sentry. La CLI se niega a responder si el issue agrupa más de un evento,
@@ -224,24 +286,29 @@ el mismo contrato.
 
 | Momento | Llamada |
 |---|---|
+| Al iniciar y cerrar sesión | `setAccount(userID:)`, con `nil` al cerrar |
 | Al enviar un comentario | `prepareComment(_:)` da el mensaje para Sentry, y después `sync(fcmToken:)` |
-| Al abrir o volver a primer plano | `syncIfNeeded(fcmToken:)` y `checkLegacyReplies(userID:)` |
+| Al abrir o volver a primer plano | `syncIfNeeded(fcmToken:)` y `checkLegacyReplies()` |
 | Al recibir el push | `isReplyNotification(_:)` lo identifica, y después `sync(fcmToken:)` |
 | Al leer una respuesta | `markRead(replyID:)` |
-| Al cerrar sesión | `reset()` |
+| Al eliminar la cuenta | `deleteAllData()` |
 
-`replies` y `unreadCount` son observables. El estado se guarda en un fichero excluido de las copias de
-seguridad. La app pone la pantalla, los textos y la navegación desde el push.
+`threads` y `unreadCount` son observables. Cada hilo es un comentario con sus respuestas, de la más
+antigua a la más reciente, y los hilos van de mayor a menor actividad. La caché se guarda en un fichero
+por cuenta, excluido de las copias de seguridad. La app pone la pantalla, los textos y la navegación
+desde el push.
 
 Los fallos de red no se propagan como errores: las llamadas devuelven `false` y se reintenta en la
-siguiente consulta. Una consulta en curso no repone datos después de `reset()`.
+siguiente consulta. Una consulta en curso de otra cuenta no mezcla datos.
 
 ## Seguridad y límites
 
 - `/v1/sync` valida el formato de los UUID, limita cuántos acepta por llamada y lleva un rate limit.
 - El push no incluye el texto de la respuesta.
 - La cuenta de servicio de Firebase se guarda como secreto del Worker.
-- Al cambiar de teléfono o reinstalar se pierden los `ref`, y con ellos el acceso a esas respuestas.
+- Sin el Llavero de iCloud activado, o al pasar a otro Apple ID o a Android, se pierden los `ref`, y con
+  ellos el acceso al histórico.
+- El estado de leído es local: al recuperar el histórico en otro teléfono, lo ya entregado cuenta como leído.
 - Los comentarios enviados antes de integrar el SDK se responden como se explica en
   [Comentarios antiguos](#comentarios-antiguos).
 - La cuota gratuita de Workers y D1 es por cuenta de Cloudflare, así que se comparte con todo lo
@@ -277,6 +344,7 @@ El evento también contiene correo e ID de usuario. La CLI no los muestra, porqu
 - [x] La CLI lee comentarios reales de la API de Sentry con un token de solo lectura: ID corto, texto, idioma, versión y `ref` derivado.
 - [x] Firmar el acceso a FCM cabe en los 10 ms de CPU del plan gratuito: un envío real funcionó sin error. Es una sola prueba, no una medición.
 - [ ] El push llega y abre la respuesta con la app cerrada a la fuerza.
+- [ ] Los `ref` del Llavero sobreviven a reinstalar y pasan a otro iPhone con el mismo Apple ID.
 - [x] El `device_app_hash` calculado por la app coincide con el valor de sentry-cocoa en un iPhone real.
 - [ ] Ese valor coincide con el de un evento ya guardado en Sentry para ese mismo iPhone. No hay ninguno todavía; en otros eventos, la etiqueta `app.device` y `contexts.app.device_app_hash` son iguales.
 - [x] La fórmula de `device_app_hash` es estable: según el historial de sentry-cocoa, esas líneas no cambian en los commits recientes.

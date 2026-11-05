@@ -26,18 +26,11 @@ const tokenExists = async (ref: string) =>
   (await env.DB.prepare("SELECT 1 AS found FROM tokens WHERE ref = ?").bind(ref).first("found")) === 1;
 
 describe("limpieza", () => {
-  it("borra las entregadas viejas y conserva las recientes", async () => {
-    const [old, recent] = [await insertReply(40, 31), await insertReply(40, 29)];
+  it("nunca borra el histórico", async () => {
+    const [delivered, undelivered] = [await insertReply(3000, 3000), await insertReply(3000, null)];
     await cleanup(env, NOW);
-    await expect(replyExists(old)).resolves.toBe(false);
-    await expect(replyExists(recent)).resolves.toBe(true);
-  });
-
-  it("da más plazo a las respuestas sin entregar", async () => {
-    const [waiting, abandoned] = [await insertReply(179, null), await insertReply(181, null)];
-    await cleanup(env, NOW);
-    await expect(replyExists(waiting)).resolves.toBe(true);
-    await expect(replyExists(abandoned)).resolves.toBe(false);
+    await expect(replyExists(delivered)).resolves.toBe(true);
+    await expect(replyExists(undelivered)).resolves.toBe(true);
   });
 
   it("borra los tokens viejos salvo los que tienen respuestas pendientes", async () => {
