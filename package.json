@@ -1,0 +1,10 @@
+{
+  "name": "replyback",
+  "private": true,
+  "packageManager": "pnpm@12.11.2",
+  "scripts": {
+    "replyback": "node cli/src/main.ts",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck"
+  }
+}

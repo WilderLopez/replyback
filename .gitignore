@@ -1,0 +1,26 @@
+# Datos y configuración privados: nunca al repo. Ver docs/publicacion.md
+.private/
+deployments/*
+!deployments/example/
+
+# Secretos
+.dev.vars*
+!.dev.vars.example
+.env
+.env.*
+!.env.example
+*.p8
+*service-account*.json
+*firebase-adminsdk*.json
+
+node_modules/
+.wrangler/
+
+# Swift
+.build/
+.swiftpm/
+DerivedData/
+xcuserdata/
+
+.DS_Store
+docs/.obsidian/*

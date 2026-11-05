@@ -1,0 +1,35 @@
+// Copia esta carpeta a deployments/<proyecto>/, que queda fuera de git, y rellena los valores.
+// Secretos (no van aquí), desde la raíz del repo:
+//   pnpm --dir worker exec wrangler secret put ADMIN_TOKEN --config ../deployments/<proyecto>/wrangler.jsonc
+//   pnpm --dir worker exec wrangler secret put FCM_SERVICE_ACCOUNT --config ../deployments/<proyecto>/wrangler.jsonc
+{
+  "$schema": "../../worker/node_modules/wrangler/config-schema.json",
+  "name": "replyback-example",
+  "main": "../../worker/src/index.ts",
+  "compatibility_date": "2026-11-05",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "replyback-example",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "../../worker/migrations"
+    }
+  ],
+  "ratelimits": [
+    {
+      "name": "RATE_LIMITER",
+      "namespace_id": "1001",
+      "simple": { "limit": 30, "period": 60 }
+    }
+  ],
+  "triggers": { "crons": ["0 4 * * *"] },
+  "observability": { "enabled": true, "logs": { "invocation_logs": false } },
+  "vars": {
+    // Texto neutro: la respuesta nunca viaja en el push.
+    "PUSH_TITLE": "Support",
+    "PUSH_BODY": "You have a new reply"
+    // Opcional: claves de traducción que la app resuelve en el dispositivo.
+    // "PUSH_TITLE_LOC_KEY": "replyback_push_title",
+    // "PUSH_BODY_LOC_KEY": "replyback_push_body"
+  }
+}

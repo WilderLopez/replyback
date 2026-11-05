@@ -1,0 +1,9 @@
+[
+  {
+    "vendor_id": "00112233-4455-6677-8899-AABBCCDDEEFF",
+    "machine": "iPhone15,2",
+    "model": "D73AP",
+    "bundle_id": "com.example.app",
+    "device_app_hash": "10ad47f881a0adb8897fb3040e65e93bc1b077c2"
+  }
+]
