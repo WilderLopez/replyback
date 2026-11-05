@@ -5,7 +5,9 @@ import { BodyError, json } from "./http";
 import { Store } from "./store";
 import { deleteData, sync } from "./sync";
 
-const TOKEN_RETENTION_MS = 180 * 24 * 3600 * 1000;
+const DAY_MS = 24 * 3600 * 1000;
+const TOKEN_RETENTION_MS = 180 * DAY_MS;
+const DEFAULT_HISTORY_RETENTION_DAYS = 730;
 
 // `fetch` necesita su `this` original, así que no se pasa suelto.
 const globalFetch: Fetch = (input, init) => fetch(input, init);
@@ -45,7 +47,12 @@ export async function handle(request: Request, env: AppEnv, fetcher: Fetch = glo
 }
 
 export async function cleanup(env: AppEnv, now: number): Promise<void> {
-  await new Store(env.DB).cleanupTokens(now - TOKEN_RETENTION_MS);
+  const configured = Number(env.HISTORY_RETENTION_DAYS);
+  const days = Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_HISTORY_RETENTION_DAYS;
+  await new Store(env.DB).cleanup({
+    historyBefore: now - days * DAY_MS,
+    tokensBefore: now - TOKEN_RETENTION_MS,
+  });
 }
 
 export default {

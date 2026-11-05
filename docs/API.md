@@ -116,5 +116,5 @@ Deletes everything about an account, even if its keys were lost. Returns `{ "sta
 
 ## Retention
 
-History never expires: it is only deleted through the endpoints above. A daily cron deletes tokens inactive for
-180 days that have no pending replies.
+A daily cron deletes threads with no reply or delivery in 730 days, configurable with `HISTORY_RETENTION_DAYS`, and
+tokens inactive for 180 days that have no pending replies. Data can also be deleted earlier through the endpoints above.

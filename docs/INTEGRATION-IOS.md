@@ -66,6 +66,17 @@ func userNotificationCenter(
 
 When the user taps it, check `isReplyNotification` in `didReceive` and navigate to your support screen.
 
+> [!IMPORTANT]
+> If the tap launches the app, your support screen can appear before the account is known, and syncing then does
+> nothing. Sync again as soon as the account is ready, for example with `.task(id: userID)`:
+>
+> ```swift
+> .task(id: userID) {
+>     if let userID { Support.client.setAccount(userID: userID) }
+>     await Support.client.sync(fcmToken: token)
+> }
+> ```
+
 ### Deleting an account
 
 `deleteAllData()` works on the active account. If your flow signs the user out at the same time, use a separate
@@ -123,7 +134,8 @@ already used sentry-cocoa on iOS.
 
 ## Before you ship
 
-- **Privacy policy:** comments, replies, user IDs and push tokens are stored in your Cloudflare account with no expiry.
+- **Privacy policy:** comments, replies, user IDs and push tokens are stored in your Cloudflare account, and deleted
+  after 2 years of inactivity by default.
 - **App Store privacy details:** declare the data you now collect.
 - **Account deletion:** call `deleteAllData()` from your deletion flow.
 - **Test with TestFlight:** Apple warns that `identifierForVendor` can change between Xcode and ad hoc installs, so

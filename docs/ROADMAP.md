@@ -48,9 +48,10 @@ Volver a [Inicio](Inicio.md).
 ## 6. Versión 1.0.0
 
 - [x] Guías de despliegue, integración y API, y CI.
-- [ ] Probar en iPhone: cambio de cuenta, reinstalar, eliminar cuenta y app cerrada a la fuerza.
+- [ ] Probar en iPhone: cambio de cuenta, reinstalar y eliminar cuenta.
 - [ ] Probar un comentario antiguo con un build de TestFlight.
-- [ ] Mover el despliegue del piloto a su cuenta definitiva.
+- [x] Mover el despliegue del piloto a su cuenta definitiva.
+- [x] Probar en iPhone: push con la app cerrada a la fuerza.
 
 ## Más adelante
 

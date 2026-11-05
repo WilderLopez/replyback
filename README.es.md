@@ -16,13 +16,13 @@ con un push, y la app muestra el comentario y su respuesta como un hilo.
 
 | Dato | Dónde vive |
 |---|---|
-| Comentario, respuesta, ID de usuario, token de push | Tu cuenta de Cloudflare, sin caducidad |
+| Comentario, respuesta, ID de usuario, token de push | Tu cuenta de Cloudflare, se borran tras 2 años sin actividad |
 | Llaves para leerlos (`ref`) | Llavero de iCloud del dispositivo, por cuenta |
 | Copia local de los hilos | Caché de la app, fuera de las copias de seguridad |
 | Correo | replyback nunca lo guarda |
 
 > [!IMPORTANT]
-> Estos datos pasan a ser tu responsabilidad. Revisa tu política de privacidad antes de publicar, y llama a
+> Estos datos pasan a ser tu responsabilidad. Comprueba que tu política de privacidad los cubre, y llama a
 > `deleteAllData()` en tu flujo de eliminar cuenta.
 
 ## Cómo empezar

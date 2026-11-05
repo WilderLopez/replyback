@@ -109,15 +109,29 @@ export class Store {
     return deleted?.meta.changes ?? 0;
   }
 
-  /** El histórico no caduca. Solo se borran los tokens inactivos sin respuestas por entregar. */
-  async cleanupTokens(before: number): Promise<void> {
-    await this.db
-      .prepare(
-        `DELETE FROM tokens
-         WHERE updated_at < ?
-           AND ref NOT IN (SELECT ref FROM replies WHERE delivered_at IS NULL)`,
-      )
-      .bind(before)
-      .run();
+  /**
+   * Borra los `ref` sin actividad desde `historyBefore`, con todas sus respuestas, y después los tokens
+   * inactivos desde `tokensBefore` que no tengan respuestas por entregar. La actividad es la última
+   * respuesta o entrega.
+   */
+  async cleanup(limits: { historyBefore: number; tokensBefore: number }): Promise<void> {
+    await this.db.batch([
+      this.db
+        .prepare(
+          `DELETE FROM replies WHERE ref IN (
+             SELECT ref FROM replies
+             GROUP BY ref
+             HAVING MAX(MAX(created_at), MAX(COALESCE(delivered_at, 0))) < ?
+           )`,
+        )
+        .bind(limits.historyBefore),
+      this.db
+        .prepare(
+          `DELETE FROM tokens
+           WHERE updated_at < ?
+             AND ref NOT IN (SELECT ref FROM replies WHERE delivered_at IS NULL)`,
+        )
+        .bind(limits.tokensBefore),
+    ]);
   }
 }

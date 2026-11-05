@@ -29,6 +29,8 @@
     // Neutral text: the reply never travels in the push.
     "PUSH_TITLE": "Support",
     "PUSH_BODY": "You have a new reply"
+    // Optional: days without activity before a thread is deleted. Default: 730.
+    // "HISTORY_RETENTION_DAYS": "730",
     // Optional: translation keys that the app resolves on the device.
     // "PUSH_TITLE_LOC_KEY": "replyback_push_title",
     // "PUSH_BODY_LOC_KEY": "replyback_push_body"

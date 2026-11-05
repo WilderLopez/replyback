@@ -88,14 +88,15 @@ servidor central.
 
 ### El Worker como fuente de verdad
 
-El comentario original viaja con la respuesta y se guarda en el Worker, junto con el histórico. Así
+El comentario original viaja con la respuesta y se guarda en el Worker, junto con el histórico, hasta 2
+años sin actividad. Así
 los hilos no dependen del dispositivo, los comentarios antiguos también muestran su original y los
 datos quedan listos para migrar a un sistema mayor.
 
 El Worker también guarda el `user_id` del evento de Sentry, para saber de qué cuenta es cada comentario,
 migrar y borrar datos aunque se hayan perdido las llaves. Lo envía la CLI y nunca se devuelve a la app.
 
-Son datos personales en la nube, y sin caducidad. Por eso existen `POST /v1/delete` y
+Son datos personales en la nube, con un plazo de 2 años sin actividad. Por eso existen `POST /v1/delete` y
 `POST /v1/admin/delete`, y cada proyecto debe reflejarlo en su política de privacidad.
 
 El comentario lo envía la CLI al responder, no la app. Una ruta pública que aceptara texto libre
@@ -255,8 +256,9 @@ CREATE INDEX replies_user_id ON replies(user_id);
 El comentario va en cada respuesta y no por `ref`, porque dos comentarios antiguos de la misma persona y
 teléfono comparten `ref`.
 
-El histórico no caduca: solo se borra con `POST /v1/delete`. Un Cron Trigger borra a diario los tokens
-sin actividad en 180 días que no tengan respuestas pendientes.
+Un Cron Trigger borra a diario los hilos sin respuestas ni entregas en 730 días, configurable con
+`HISTORY_RETENTION_DAYS`, y los tokens sin actividad en 180 días que no tengan respuestas pendientes.
+También se pueden borrar antes con `POST /v1/delete` y `POST /v1/admin/delete`.
 
 ## CLI
 

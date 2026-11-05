@@ -36,7 +36,7 @@ App ── comment + ref ───► Sentry
 
 | Data | Where it lives |
 |---|---|
-| Comment, reply, user ID, push token | Your Cloudflare account, with no expiry |
+| Comment, reply, user ID, push token | Your Cloudflare account, deleted after 2 years of inactivity |
 | Keys to read them (`ref`) | iCloud Keychain on the device, per account |
 | Local copy of threads | App cache, excluded from backups |
 | Email | Never stored by replyback |
@@ -48,7 +48,7 @@ App ── comment + ref ───► Sentry
 - **Deletion:** the app can erase its data with `deleteAllData()`, and you can with `replyback forget`.
 
 > [!IMPORTANT]
-> You become responsible for this data. Review your privacy policy before shipping, and call
+> You become responsible for this data. Check that your privacy policy covers it, and call
 > `deleteAllData()` from your account deletion flow.
 
 ## Get started

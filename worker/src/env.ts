@@ -4,4 +4,6 @@ export interface AppEnv extends Env {
   FCM_SERVICE_ACCOUNT?: string;
   PUSH_TITLE_LOC_KEY?: string;
   PUSH_BODY_LOC_KEY?: string;
+  /** Días sin actividad tras los que se borra un hilo. Por defecto, 730. */
+  HISTORY_RETENTION_DAYS?: string;
 }
