@@ -93,9 +93,13 @@ public final class ReplybackClient {
     }
 
     /// Para abrir la app o volver a primer plano: solo consulta si hay comentarios sin responder, y
-    /// no más de una vez por `minimumSyncInterval`.
+    /// no más de una vez por `minimumSyncInterval`. Si cambió el token, lo actualiza en todos los hilos:
+    /// sin eso, una segunda respuesta a un hilo ya respondido no avisaría.
     @discardableResult
     public func syncIfNeeded(fcmToken: String?) async -> Bool {
+        if let fcmToken, fcmToken != state.lastFCMToken, !state.refs.isEmpty {
+            return await fetch(refs: state.refs, fcmToken: fcmToken)
+        }
         let answered = Set(state.replies.map(\.ref))
         let pending = state.refs.filter { !answered.contains($0) }
         guard !pending.isEmpty else { return true }
@@ -188,6 +192,7 @@ public final class ReplybackClient {
         }
         guard startedIn == generation else { return false }
         state.lastSyncAt = now()
+        if let fcmToken { state.lastFCMToken = fcmToken }
         merge(received)
         return true
     }

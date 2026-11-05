@@ -236,6 +236,57 @@ struct ReplybackClientTests {
         #expect(harness.worker.calls.last?.refs == [pending])
     }
 
+    @Test func unTokenNuevoSeActualizaEnTodosLosHilos() async throws {
+        let harness = Harness()
+        let client = harness.client()
+        let answered = try ref(in: client.prepareComment("Uno"))
+        harness.worker.reply("r1", ref: answered)
+        await client.sync(fcmToken: "token-1")
+        #expect(harness.worker.calls.count == 1)
+
+        // Mismo token y sin pendientes: no gasta peticiones.
+        await client.syncIfNeeded(fcmToken: "token-1")
+        #expect(harness.worker.calls.count == 1)
+        // Sin token no hay nada que actualizar.
+        await client.syncIfNeeded(fcmToken: nil)
+        #expect(harness.worker.calls.count == 1)
+
+        // Token nuevo: incluye el hilo ya respondido, aunque no haya pasado el intervalo.
+        await client.syncIfNeeded(fcmToken: "token-2")
+        #expect(harness.worker.calls.last?.refs == [answered])
+        #expect(harness.worker.calls.last?.token == "token-2")
+
+        await client.syncIfNeeded(fcmToken: "token-2")
+        #expect(harness.worker.calls.count == 2, "ya está actualizado")
+    }
+
+    @Test func unFalloAlActualizarElTokenSeReintenta() async throws {
+        let harness = Harness()
+        let client = harness.client()
+        _ = client.prepareComment("Uno")
+        await client.sync(fcmToken: "token-1")
+
+        harness.worker.status = 500
+        #expect(await client.syncIfNeeded(fcmToken: "token-2") == false)
+        harness.worker.status = 200
+        #expect(await client.syncIfNeeded(fcmToken: "token-2"))
+        #expect(harness.worker.calls.last?.token == "token-2")
+    }
+
+    @Test func cadaCuentaRecuerdaSuPropioToken() async throws {
+        let harness = Harness()
+        let client = harness.client(account: "user-1")
+        _ = client.prepareComment("Uno")
+        await client.sync(fcmToken: "token")
+
+        client.setAccount(userID: "user-2")
+        await client.syncIfNeeded(fcmToken: "token")
+        #expect(harness.worker.calls.count == 1, "la cuenta 2 no tiene hilos")
+        _ = client.prepareComment("Dos")
+        await client.syncIfNeeded(fcmToken: "token")
+        #expect(harness.worker.calls.count == 2)
+    }
+
     @Test func dividePorLotesDeVeinte() async {
         let harness = Harness()
         let client = harness.client()

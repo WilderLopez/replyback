@@ -59,4 +59,6 @@ struct AccountState: Codable, Equatable {
     var replies: [StoredReply] = []
     var legacyChecks: Set<String> = []
     var lastSyncAt: Date?
+    /// Último token que aceptó el Worker. Si cambia, hay que comunicárselo en todos los hilos.
+    var lastFCMToken: String?
 }

@@ -293,6 +293,9 @@ el mismo contrato.
 | Al leer una respuesta | `markRead(replyID:)` |
 | Al eliminar la cuenta | `deleteAllData()` |
 
+`syncIfNeeded` solo consulta los comentarios sin responder, salvo que haya cambiado el token: entonces lo
+actualiza en todos los hilos, para que una segunda respuesta a un hilo ya respondido también avise.
+
 `threads` y `unreadCount` son observables. Cada hilo es un comentario con sus respuestas, de la más
 antigua a la más reciente, y los hilos van de mayor a menor actividad. La caché se guarda en un fichero
 por cuenta, excluido de las copias de seguridad. La app pone la pantalla, los textos y la navegación
