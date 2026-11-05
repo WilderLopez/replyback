@@ -29,6 +29,7 @@ interface FakeIssue {
   firstSeen: string;
   message: string;
   withUser?: boolean;
+  status?: string;
 }
 
 const issues: Record<string, FakeIssue> = {
@@ -36,6 +37,7 @@ const issues: Record<string, FakeIssue> = {
   legacy: { id: "2", shortId: "DEMO-B", count: "1", firstSeen: "2026-09-01T10:00:00Z", message: "Comentario antiguo" },
   noPath: { id: "3", shortId: "DEMO-C", count: "1", firstSeen: "2026-08-01T10:00:00Z", message: "Sin datos", withUser: false },
   grouped: { id: "4", shortId: "DEMO-D", count: "3", firstSeen: "2026-07-01T10:00:00Z", message: "Agrupado" },
+  archived: { id: "5", shortId: "DEMO-E", count: "1", firstSeen: "2026-06-01T10:00:00Z", message: "Parece spam", status: "ignored" },
 };
 
 function harness(options: { replies?: unknown[]; confirm?: boolean | null; sendPush?: string; link?: string; workerStatus?: number } = {}) {
@@ -97,10 +99,12 @@ test("list consulta solo comentarios del proyecto y no imprime datos personales"
   const search = new URL(h.calls[0]?.url ?? "");
   assert.equal(search.pathname, "/api/0/organizations/demo-org/issues/");
   assert.equal(search.searchParams.get("project"), "demo-app");
-  assert.equal(search.searchParams.get("query"), "is:unresolved issue.category:feedback");
+  assert.equal(search.searchParams.get("query"), "!is:resolved issue.category:feedback");
   assert.equal(new Headers(h.calls[0]?.init?.headers).get("authorization"), "Bearer sentry-token");
 
-  assert.equal(h.out.length, 4);
+  assert.equal(h.out.length, 5);
+  assert.match(h.out[4] ?? "", /DEMO-E.*\[archivado\] Parece spam/);
+  assert.ok(!(h.out[3] ?? "").includes("[archivado]"));
   assert.match(h.out[0] ?? "", /DEMO-A.*2026-10-01.*es_US.*1\.2\.3\+45.*con ref.*sin responder.*Comentario con ref/);
   assert.match(h.out[1] ?? "", /DEMO-B.*antiguo/);
   assert.match(h.out[2] ?? "", /DEMO-C.*sin vía/);
@@ -162,6 +166,12 @@ test("show muestra el comentario sin el ref y sus respuestas", async () => {
   assert.ok(!text.includes(REF));
   assertNoPersonalData(h.out);
   assert.match(new URL(h.calls[0]?.url ?? "").searchParams.get("query") ?? "", /issue\.category:feedback issue:DEMO-A/);
+});
+
+test("show avisa si Sentry archivó el comentario", async () => {
+  const h = harness();
+  await run(["show", "DEMO-E"], h.deps);
+  assert.ok(h.out.join("\n").includes("archivado por Sentry"));
 });
 
 test("show avisa si el comentario no existe", async () => {

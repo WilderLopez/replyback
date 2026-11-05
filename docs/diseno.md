@@ -259,6 +259,11 @@ Comprobado con comentarios reales del proyecto piloto:
   fuente.
 - **Etiquetas:** el evento incluye las del scope del SDK, así que `ref` también podría viajar como
   etiqueta si la línea en el mensaje da problemas.
+- **Spam:** Sentry puede archivar por su cuenta un comentario que clasifica como spam, y entonces no
+  aparece con `is:unresolved`. Le pasó a un comentario de prueba que decía "por favor ignorar", aunque
+  Sentry no indica el motivo. Por eso la CLI consulta `!is:resolved` y los marca como archivados.
+- **Quién ve el `ref`:** va en el mensaje, así que lo ven quienes acceden al proyecto de Sentry y puede
+  aparecer en el título del issue.
 - **Idioma:** `contexts.culture.locale` indica en qué idioma conviene responder.
 - **Cuota:** entraron comentarios mientras los errores se rechazaban por cuota agotada, con cero
   errores aceptados en esos días. Todo apunta a que el feedback no depende de esa cuota, aunque la
@@ -268,7 +273,7 @@ El evento también contiene correo e ID de usuario. La CLI no los muestra, porqu
 
 ## Por comprobar
 
-- [ ] El `ref` llega intacto, enviando un comentario de prueba desde una versión con el SDK.
+- [x] El `ref` llega intacto en `contexts.feedback.message`, con un comentario enviado desde un iPhone real.
 - [x] La CLI lee comentarios reales de la API de Sentry con un token de solo lectura: ID corto, texto, idioma, versión y `ref` derivado.
 - [x] Firmar el acceso a FCM cabe en los 10 ms de CPU del plan gratuito: un envío real funcionó sin error. Es una sola prueba, no una medición.
 - [ ] El push llega y abre la respuesta con la app cerrada a la fuerza.

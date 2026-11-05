@@ -90,7 +90,7 @@ async function list(config: Config, deps: Deps, pending: boolean, all: boolean):
         comment.release.padEnd(10),
         targetLabel(comment).padEnd(7),
         state.padEnd(13),
-        oneLine(comment.text),
+        `${comment.ignored ? "[archivado] " : ""}${oneLine(comment.text)}`,
       ].join("  "),
     );
   }
@@ -103,6 +103,7 @@ function printComment(deps: Deps, comment: Comment): void {
   deps.out(`Idioma:     ${comment.locale}`);
   deps.out(`Versión:    ${comment.release}`);
   deps.out(`Tipo:       ${targetLabel(comment)}`);
+  if (comment.ignored) deps.out("Estado:     archivado por Sentry, quizá como spam");
   deps.out("");
   deps.out(comment.text);
 }

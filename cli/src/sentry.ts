@@ -25,6 +25,8 @@ export interface Comment {
   locale: string;
   release: string;
   eventCount: number;
+  /** Sentry lo archivó, normalmente porque su detector lo clasificó como spam. */
+  ignored: boolean;
   text: string;
   target: Target;
 }
@@ -34,6 +36,7 @@ interface RawIssue {
   shortId: string;
   count: string;
   firstSeen: string;
+  status?: string;
 }
 
 interface RawEvent {
@@ -109,6 +112,7 @@ async function toComment(config: SentryConfig, fetcher: typeof fetch, issue: Raw
     // `bundle@1.2.3+45`: solo interesa la versión.
     release: release.split("@").at(-1) ?? "",
     eventCount: Number(issue.count),
+    ignored: issue.status === "ignored",
     text,
     target: target(ref, event),
   };
@@ -119,7 +123,8 @@ export async function listComments(
   fetcher: typeof fetch,
   includeResolved: boolean,
 ): Promise<Comment[]> {
-  const query = includeResolved ? "issue.category:feedback" : "is:unresolved issue.category:feedback";
+  // `is:unresolved` dejaría fuera lo que el detector de spam de Sentry archiva por su cuenta.
+  const query = includeResolved ? "issue.category:feedback" : "!is:resolved issue.category:feedback";
   const issues = await listIssues(config, fetcher, query);
   const comments: Comment[] = [];
   for (let start = 0; start < issues.length; start += CONCURRENCY) {
