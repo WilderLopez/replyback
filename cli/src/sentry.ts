@@ -56,7 +56,7 @@ export class SentryError extends Error {
   status: number;
 
   constructor(status: number) {
-    super(`Sentry respondió ${status}`);
+    super(`Sentry responded ${status}`);
     this.status = status;
   }
 }

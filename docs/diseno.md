@@ -345,7 +345,7 @@ El evento también contiene correo e ID de usuario. La CLI no los muestra, porqu
 
 - [x] El `ref` llega intacto en `contexts.feedback.message`, con un comentario enviado desde un iPhone real.
 - [x] La CLI lee comentarios reales de la API de Sentry con un token de solo lectura: ID corto, texto, idioma, versión y `ref` derivado.
-- [x] Firmar el acceso a FCM cabe en los 10 ms de CPU del plan gratuito: un envío real funcionó sin error. Es una sola prueba, no una medición.
+- [x] Firmar el acceso a FCM cabe en los 10 ms de CPU del plan gratuito: 40 envíos seguidos llegaron a FCM, y el máximo fue 6 ms en los 17 que registró `wrangler tail`.
 - [ ] El push llega y abre la respuesta con la app cerrada a la fuerza.
 - [ ] Los `ref` del Llavero sobreviven a reinstalar y pasan a otro iPhone con el mismo Apple ID.
 - [x] El `device_app_hash` calculado por la app coincide con el valor de sentry-cocoa en un iPhone real.

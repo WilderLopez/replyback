@@ -10,7 +10,7 @@ Volver a [Inicio](Inicio.md).
 ## 1. Idea
 
 - [x] Documentar el diseño.
-- [ ] Confirmar el nombre.
+- [x] Confirmar el nombre.
 - [x] Resolver lo que se pueda de la lista [Por comprobar](diseno.md#por-comprobar) con comentarios
       reales en Sentry.
 
@@ -44,6 +44,13 @@ Volver a [Inicio](Inicio.md).
 - [x] Revisión completa según [Publicación](publicacion.md).
 - [x] README con instalación y despliegue.
 - [x] Subir el repo a GitHub.
+
+## 6. Versión 1.0.0
+
+- [x] Guías de despliegue, integración y API, y CI.
+- [ ] Probar en iPhone: cambio de cuenta, reinstalar, eliminar cuenta y app cerrada a la fuerza.
+- [ ] Probar un comentario antiguo con un build de TestFlight.
+- [ ] Mover el despliegue del piloto a su cuenta definitiva.
 
 ## Más adelante
 

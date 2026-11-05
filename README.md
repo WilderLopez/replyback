@@ -1,118 +1,91 @@
 # replyback
 
-Responde dentro de tu app a los comentarios que los usuarios envían por Sentry.
+[![CI](https://github.com/WilderLopez/replyback/actions/workflows/ci.yml/badge.svg)](https://github.com/WilderLopez/replyback/actions/workflows/ci.yml)
 
-Sentry recoge el comentario, pero no ofrece un canal para contestar. replyback añade ese canal sin
-tocar el backend de la app y sin usar correo: respondes desde una CLI, un Cloudflare Worker guarda la
-respuesta y avisa con un push, y la app la recoge y la muestra.
+Reply inside your app to the feedback your users send through Sentry.
+
+Sentry collects user feedback but gives you no way to answer it. replyback adds that channel without
+touching your app's backend and without email: you reply from a CLI, a Cloudflare Worker stores the reply
+and sends a push, and your app shows the comment and its reply as a thread.
+
+[Leer en español](README.es.md)
 
 ```text
-App ── comentario + ref ──► Sentry
- │                            ▲
- │                            │ lee comentarios
- │                           CLI
- │                            │ envía la respuesta
- │                            ▼
- └───── POST /v1/sync ───►  Worker + D1 ──► FCM ──► push a la app
+App ── comment + ref ───► Sentry
+ │                          ▲
+ │                          │ reads comments (read-only)
+ │                         CLI
+ │                          │ sends the reply and the original comment
+ │                          ▼
+ └──── POST /v1/sync ───► Worker + D1 ──► FCM ──► push to the app
 ```
 
 > [!NOTE]
-> Proyecto en fase temprana, con SDK solo para iOS. El nombre es provisional.
+> Early stage: the iOS SDK has been tested on a real iPhone but has not shipped in an App Store release yet.
+> Android has no SDK, only a [documented API](docs/API.md).
 
-## Cómo protege los datos
+## What you get
 
-- **Referencia aleatoria:** cada comentario lleva un UUID generado en la app, y solo quien lo tiene
-  puede leer sus respuestas. No se usa el ID de usuario, que no es secreto.
-- **Push neutro:** ni la respuesta ni la referencia viajan en el aviso.
-- **La nube como fuente de verdad:** el Worker guarda el comentario, la respuesta, el histórico y el ID de
-  usuario, que nunca se devuelve a la app. No guarda el correo. El dispositivo guarda las llaves en el Llavero de iCloud y una caché.
-- **Borrado:** la app puede borrar sus datos con `deleteAllData()`, y tú con `replyback forget <issue>`.
-- **Solo lectura en Sentry:** la CLI nunca escribe allí, y no muestra correo ni ID de usuario.
-- **Revisa tu política de privacidad:** estos datos se guardan en tu cuenta de Cloudflare, sin caducidad.
+- **Threads in your app:** each comment with its replies, plus an "awaiting reply" state.
+- **Free to start:** it should fit Cloudflare's and Firebase's free plans.
+- **One deployment per project:** your own Worker, database and secrets. No central server.
+- **No backend changes:** the Worker never calls your backend.
+- **Works for old comments:** comments sent before integrating the SDK can also be answered, on iOS.
 
-Los motivos de cada decisión están en [docs/diseno.md](docs/diseno.md).
+## How it handles data
 
-## Qué necesitas
+| Data | Where it lives |
+|---|---|
+| Comment, reply, user ID, push token | Your Cloudflare account, with no expiry |
+| Keys to read them (`ref`) | iCloud Keychain on the device, per account |
+| Local copy of threads | App cache, excluded from backups |
+| Email | Never stored by replyback |
 
-- Una cuenta de Cloudflare. Debería caber en el plan gratuito, cuya cuota es por cuenta.
-- Un proyecto de Firebase con FCM configurado en tu app.
-- Un proyecto de Sentry que reciba los comentarios de los usuarios.
-- Node 22.18 o posterior, pnpm y, para el SDK, Xcode con Swift 6.
+- **Keys, not logins:** each comment carries a random UUID, and only its holder can read the replies. The
+  user ID is not used as a key because it is not secret. It is sent by the CLI and never returned to the app.
+- **Neutral push:** neither the reply nor the key travels in the notification.
+- **Read-only on Sentry:** the CLI never writes there, and never prints emails or user IDs.
+- **Deletion:** the app can erase its data with `deleteAllData()`, and you can with `replyback forget`.
 
-## Desplegar el Worker
+> [!IMPORTANT]
+> You become responsible for this data. Review your privacy policy before shipping, and call
+> `deleteAllData()` from your account deletion flow.
+
+## Get started
+
+1. [Deploy the Worker and set up the CLI](docs/DEPLOY.md).
+2. [Integrate the iOS SDK](docs/INTEGRATION-IOS.md), or implement the [API](docs/API.md) on another platform.
+3. Answer your users:
+
+```sh
+pnpm replyback --deployment my-app list --pending
+pnpm replyback --deployment my-app show PROJECT-123
+pnpm replyback --deployment my-app reply PROJECT-123 "Fixed in the latest version, thanks for reporting it."
+```
+
+`reply` asks for confirmation before sending, and running the same command twice does not duplicate
+the reply or the push.
+
+## Known limits
+
+- **Sentry's spam detector:** it can archive real comments on its own, and it sends no alerts for them. Use
+  `replyback list`, which shows them as `[archived]`, rather than relying on alerts.
+- **Sentry takes a few minutes** to make a new comment available.
+- **The keys depend on iCloud Keychain:** without it, or when moving to another Apple ID or to Android, the
+  user loses access to their history.
+- **Unanswered comments are local:** the CLI uploads the comment when replying, so a comment with no reply
+  does not appear on another device.
+- **History window:** the CLI reads the last 90 days of comments.
+
+## Development
 
 ```sh
 make install
-cp -R deployments/example deployments/mi-app   # queda fuera de git
-cd worker
-pnpm exec wrangler d1 create replyback-mi-app  # copia el ID en deployments/mi-app/wrangler.jsonc
+make check   # typecheck, Worker, CLI and SDK tests, and an iOS build
 ```
 
-Cambia también `name`, `database_name`, los textos del push y `namespace_id` en ese fichero, y luego:
+The design decisions are in [docs/diseno.md](docs/diseno.md), in Spanish.
 
-```sh
-pnpm exec wrangler d1 migrations apply replyback-mi-app --remote --config ../deployments/mi-app/wrangler.jsonc
-pnpm exec wrangler deploy --config ../deployments/mi-app/wrangler.jsonc
-pnpm exec wrangler secret put ADMIN_TOKEN --config ../deployments/mi-app/wrangler.jsonc
-pnpm exec wrangler secret put FCM_SERVICE_ACCOUNT --config ../deployments/mi-app/wrangler.jsonc
-```
-
-`FCM_SERVICE_ACCOUNT` es el JSON de una cuenta de servicio de Firebase. Conviene crear una solo para
-esto, con el rol **Firebase Cloud Messaging API Admin**.
-
-## Usar la CLI
-
-Copia `.env.example` a `.env` en `deployments/mi-app/` y rellénalo. El token de Sentry solo necesita el
-permiso `event:read`.
-
-```sh
-pnpm replyback --deployment mi-app list --pending
-pnpm replyback --deployment mi-app show PROYECTO-123
-pnpm replyback --deployment mi-app reply PROYECTO-123 "Ya está corregido, gracias por avisar."
-```
-
-`reply` pide confirmación antes de enviar, y repetir el mismo texto no duplica la respuesta ni el aviso.
-
-## Integrar el SDK de iOS
-
-Añade este repo como paquete de Swift y crea un `ReplybackClient`. El SDK no depende de Sentry ni trae
-interfaz: la app envía el mensaje por su canal y pinta las respuestas donde quiera.
-
-```swift
-let replyback = ReplybackClient(configuration: ReplybackConfiguration(workerURL: workerURL))
-
-// Al iniciar sesión. Con `nil` al cerrarla: los datos se ocultan sin borrarse.
-replyback.setAccount(userID: userID)
-
-// Al enviar un comentario: `message` ya lleva la referencia.
-let message = replyback.prepareComment(text)
-SentrySDK.capture(feedback: SentryFeedback(message: message, name: name, email: email, source: .custom))
-await replyback.sync(fcmToken: token)
-
-// Al abrir la app o volver a ella.
-await replyback.syncIfNeeded(fcmToken: token)
-
-// Al recibir el push.
-if ReplybackClient.isReplyNotification(userInfo) {
-    await replyback.sync(fcmToken: token)
-}
-
-// Al eliminar la cuenta.
-await replyback.deleteAllData()
-```
-
-`replyback.threads` y `replyback.unreadCount` son observables desde SwiftUI. Cada hilo trae el comentario
-original y sus respuestas.
-
-## Desarrollo
-
-```sh
-make check   # typecheck, tests del Worker, de la CLI y del SDK, y compilación para iOS
-```
-
-La documentación está en [docs/](docs/Inicio.md). Las reglas sobre qué nunca debe entrar al repo están
-en [docs/publicacion.md](docs/publicacion.md).
-
-## Licencia
+## License
 
 [MIT](LICENSE)

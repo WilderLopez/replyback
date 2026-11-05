@@ -1,4 +1,4 @@
-.PHONY: install check test typecheck types build-ios
+.PHONY: install check test typecheck types build-ios deploy
 
 check: typecheck test build-ios
 
@@ -19,3 +19,7 @@ typecheck:
 
 types:
 	pnpm --dir worker types
+
+# make deploy D=<deployment>
+deploy:
+	scripts/deploy.sh $(D)

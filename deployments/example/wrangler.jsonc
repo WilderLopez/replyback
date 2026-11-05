@@ -1,7 +1,5 @@
-// Copia esta carpeta a deployments/<proyecto>/, que queda fuera de git, y rellena los valores.
-// Secretos (no van aquí), desde la raíz del repo:
-//   pnpm --dir worker exec wrangler secret put ADMIN_TOKEN --config ../deployments/<proyecto>/wrangler.jsonc
-//   pnpm --dir worker exec wrangler secret put FCM_SERVICE_ACCOUNT --config ../deployments/<proyecto>/wrangler.jsonc
+// Copy this folder to deployments/<project>/, which stays out of git, and fill in the values.
+// Secrets do not go here. See docs/DEPLOY.md.
 {
   "$schema": "../../worker/node_modules/wrangler/config-schema.json",
   "name": "replyback-example",
@@ -15,6 +13,7 @@
       "migrations_dir": "../../worker/migrations"
     }
   ],
+  // Use a value no other Worker in your account uses: counters are shared per namespace.
   "ratelimits": [
     {
       "name": "RATE_LIMITER",
@@ -22,13 +21,15 @@
       "simple": { "limit": 30, "period": 60 }
     }
   ],
+  // Optional: a stable URL on your own domain, so you can move accounts without shipping a new app.
+  // "routes": [{ "pattern": "support.example.com", "custom_domain": true }],
   "triggers": { "crons": ["0 4 * * *"] },
   "observability": { "enabled": true, "logs": { "invocation_logs": false } },
   "vars": {
-    // Texto neutro: la respuesta nunca viaja en el push.
+    // Neutral text: the reply never travels in the push.
     "PUSH_TITLE": "Support",
     "PUSH_BODY": "You have a new reply"
-    // Opcional: claves de traducción que la app resuelve en el dispositivo.
+    // Optional: translation keys that the app resolves on the device.
     // "PUSH_TITLE_LOC_KEY": "replyback_push_title",
     // "PUSH_BODY_LOC_KEY": "replyback_push_body"
   }

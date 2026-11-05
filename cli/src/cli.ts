@@ -7,17 +7,18 @@ import { deleteUser, fetchReplies, sendReply, WorkerError, type StoredReply, typ
 const MAX_TEXT_LENGTH = 4000;
 const PREVIEW_LENGTH = 60;
 
-const USAGE = `Uso: replyback [--deployment <nombre>] <comando>
+const USAGE = `Usage: replyback [--deployment <name>] <command>
 
-  list [--pending] [--all]            Lista los comentarios. --pending oculta los ya respondidos,
-                                      --all incluye los resueltos en Sentry.
-  show <issue>                        Muestra un comentario y sus respuestas.
-  reply <issue> "texto" [--yes]       Responde. Pide confirmación salvo con --yes.
-  reply <issue> --file <ruta> [--yes] Lee el texto de un fichero.
-  forget <issue> [--yes]              Borra del Worker todo lo de la cuenta que envió ese comentario.
+  list [--pending] [--all]            Lists comments. --pending hides answered ones,
+                                      --all includes those resolved in Sentry.
+  show <issue>                        Shows a comment and its replies.
+  reply <issue> "text" [--yes]        Replies. Asks for confirmation unless --yes.
+  reply <issue> --file <path> [--yes] Reads the text from a file.
+  forget <issue> [--yes]              Deletes from the Worker everything about the account
+                                      that sent this comment.
 
-<issue> es el ID corto de Sentry. La configuración se lee del entorno o de
-deployments/<nombre>/.env (ver deployments/example/.env.example).`;
+<issue> is the Sentry short ID. Configuration comes from the environment or from
+deployments/<name>/.env (see deployments/example/.env.example).`;
 
 export interface Deps {
   env: Record<string, string | undefined>;
@@ -38,7 +39,7 @@ class UsageError extends Error {}
 function loadConfig(env: Deps["env"]): Config {
   const names = ["SENTRY_AUTH_TOKEN", "SENTRY_ORG", "SENTRY_PROJECT", "REPLYBACK_URL", "REPLYBACK_ADMIN_TOKEN"];
   const missing = names.filter((name) => !env[name]);
-  if (missing.length > 0) throw new UsageError(`Falta configuración: ${missing.join(", ")}`);
+  if (missing.length > 0) throw new UsageError(`Missing configuration: ${missing.join(", ")}`);
   return {
     sentry: {
       url: (env["SENTRY_URL"] ?? "https://sentry.io").replace(/\/$/, ""),
@@ -51,7 +52,7 @@ function loadConfig(env: Deps["env"]): Config {
 }
 
 const targetLabel = (comment: Comment): string =>
-  ({ ref: "con ref", legacy: "antiguo", none: "sin vía" })[comment.target.kind];
+  ({ ref: "ref", legacy: "legacy", none: "no route" })[comment.target.kind];
 
 const refOf = (comment: Comment): string | null => (comment.target.kind === "none" ? null : comment.target.ref);
 
@@ -60,8 +61,8 @@ const repliesTo = (comment: Comment, byRef: Map<string, StoredReply[]>): StoredR
   (byRef.get(refOf(comment) ?? "") ?? []).filter((reply) => reply.comment === null || reply.comment === comment.text);
 
 function replyState(replies: StoredReply[]): string {
-  if (replies.length === 0) return "sin responder";
-  return replies.some((reply) => reply.delivered_at !== null) ? "entregada" : "respondida";
+  if (replies.length === 0) return "unanswered";
+  return replies.some((reply) => reply.delivered_at !== null) ? "delivered" : "replied";
 }
 
 const oneLine = (text: string): string => {
@@ -79,10 +80,10 @@ async function list(config: Config, deps: Deps, pending: boolean, all: boolean):
 
   const rows = comments
     .map((comment) => ({ comment, state: replyState(repliesTo(comment, replies)) }))
-    .filter(({ state }) => !pending || state === "sin responder");
+    .filter(({ state }) => !pending || state === "unanswered");
 
   if (rows.length === 0) {
-    deps.out("No hay comentarios.");
+    deps.out("No comments.");
     return 0;
   }
   const width = Math.max(...rows.map(({ comment }) => comment.shortId.length));
@@ -95,7 +96,7 @@ async function list(config: Config, deps: Deps, pending: boolean, all: boolean):
         comment.release.padEnd(10),
         targetLabel(comment).padEnd(7),
         state.padEnd(13),
-        `${comment.ignored ? "[archivado] " : ""}${oneLine(comment.text)}`,
+        `${comment.ignored ? "[archived] " : ""}${oneLine(comment.text)}`,
       ].join("  "),
     );
   }
@@ -103,12 +104,12 @@ async function list(config: Config, deps: Deps, pending: boolean, all: boolean):
 }
 
 function printComment(deps: Deps, comment: Comment): void {
-  deps.out(`Comentario: ${comment.shortId}`);
-  deps.out(`Fecha:      ${comment.date}`);
-  deps.out(`Idioma:     ${comment.locale}`);
-  deps.out(`Versión:    ${comment.release}`);
-  deps.out(`Tipo:       ${targetLabel(comment)}`);
-  if (comment.ignored) deps.out("Estado:     archivado por Sentry, quizá como spam");
+  deps.out(`Comment:  ${comment.shortId}`);
+  deps.out(`Date:     ${comment.date}`);
+  deps.out(`Locale:   ${comment.locale}`);
+  deps.out(`Version:  ${comment.release}`);
+  deps.out(`Type:     ${targetLabel(comment)}`);
+  if (comment.ignored) deps.out("Status:   archived by Sentry, possibly as spam");
   deps.out("");
   deps.out(comment.text);
 }
@@ -116,7 +117,7 @@ function printComment(deps: Deps, comment: Comment): void {
 async function show(config: Config, deps: Deps, shortId: string): Promise<number> {
   const comment = await getComment(config.sentry, deps.fetch, shortId);
   if (!comment) {
-    deps.err(`No existe el comentario ${shortId} en este proyecto.`);
+    deps.err(`Comment ${shortId} not found in this project.`);
     return 1;
   }
   printComment(deps, comment);
@@ -124,20 +125,20 @@ async function show(config: Config, deps: Deps, shortId: string): Promise<number
   const replies = ref ? repliesTo(comment, await fetchReplies(config.worker, deps.fetch, [ref])) : [];
   for (const reply of replies) {
     deps.out("");
-    deps.out(`Respuesta del ${dateOf(reply.created_at)} (aviso: ${dateOf(reply.pushed_at)}, entregada: ${dateOf(reply.delivered_at)})`);
+    deps.out(`Reply on ${dateOf(reply.created_at)} (push: ${dateOf(reply.pushed_at)}, delivered: ${dateOf(reply.delivered_at)})`);
     deps.out(reply.text);
   }
   return 0;
 }
 
 const PUSH_MESSAGES: Record<string, string> = {
-  sent: "aviso enviado",
-  no_token: "sin aviso porque no hay token; se entrega cuando la app consulte",
-  failed: "el aviso falló; repite este mismo comando para reintentarlo",
-  invalid_token: "sin aviso porque el token ya no es válido; se entrega cuando la app consulte",
-  not_configured: "sin aviso porque el Worker no tiene FCM configurado",
-  already_sent: "ya estaba enviada; no se avisó otra vez",
-  already_delivered: "ya estaba entregada; no se avisó otra vez",
+  sent: "push sent",
+  no_token: "no push because there is no token; it will be delivered when the app checks",
+  failed: "the push failed; run this same command again to retry",
+  invalid_token: "no push because the token is no longer valid; it will be delivered when the app checks",
+  not_configured: "no push because the Worker has no FCM configuration",
+  already_sent: "already sent; no new push",
+  already_delivered: "already delivered; no new push",
 };
 
 async function reply(
@@ -148,40 +149,40 @@ async function reply(
   skipConfirmation: boolean,
 ): Promise<number> {
   if (text.length > MAX_TEXT_LENGTH) {
-    deps.err(`El texto tiene ${text.length} caracteres; el máximo es ${MAX_TEXT_LENGTH}.`);
+    deps.err(`The text has ${text.length} characters; the maximum is ${MAX_TEXT_LENGTH}.`);
     return 1;
   }
   const comment = await getComment(config.sentry, deps.fetch, shortId);
   if (!comment) {
-    deps.err(`No existe el comentario ${shortId} en este proyecto.`);
+    deps.err(`Comment ${shortId} not found in this project.`);
     return 1;
   }
   const ref = refOf(comment);
   if (!ref) {
-    deps.err(`${comment.shortId} no se puede responder: no tiene ref ni los datos para derivarlo.`);
+    deps.err(`${comment.shortId} cannot be answered: it has no ref and no data to derive one.`);
     return 1;
   }
   if (comment.eventCount !== 1) {
-    deps.err(`${comment.shortId} agrupa ${comment.eventCount} eventos: la respuesta podría llegar a otra persona.`);
+    deps.err(`${comment.shortId} groups ${comment.eventCount} events: the reply could reach someone else.`);
     return 1;
   }
 
   const existing = repliesTo(comment, await fetchReplies(config.worker, deps.fetch, [ref]));
   printComment(deps, comment);
   deps.out("");
-  if (existing.length > 0) deps.out(`Atención: ya tiene ${existing.length} respuesta(s).`);
-  deps.out("Respuesta:");
+  if (existing.length > 0) deps.out(`Warning: it already has ${existing.length} reply(ies).`);
+  deps.out("Reply:");
   deps.out(text);
   deps.out("");
 
   if (!skipConfirmation) {
-    const confirmed = await deps.confirm("Escribe «enviar» para confirmar: ");
+    const confirmed = await deps.confirm("Type \"send\" to confirm: ");
     if (confirmed === null) {
-      deps.err("Sin enviar: no hay terminal para confirmar. Usa --yes solo si ya revisaste el texto.");
+      deps.err("Not sent: there is no terminal to confirm. Use --yes only if you already reviewed the text.");
       return 1;
     }
     if (!confirmed) {
-      deps.out("Sin enviar.");
+      deps.out("Not sent.");
       return 0;
     }
   }
@@ -194,35 +195,35 @@ async function reply(
     comment_at: comment.commentAt,
     user_id: comment.userId,
   });
-  deps.out(`Respuesta guardada: ${PUSH_MESSAGES[result.push] ?? result.push}.`);
+  deps.out(`Reply saved: ${PUSH_MESSAGES[result.push] ?? result.push}.`);
   return result.push === "failed" ? 1 : 0;
 }
 
 async function forget(config: Config, deps: Deps, shortId: string, skipConfirmation: boolean): Promise<number> {
   const comment = await getComment(config.sentry, deps.fetch, shortId);
   if (!comment) {
-    deps.err(`No existe el comentario ${shortId} en este proyecto.`);
+    deps.err(`Comment ${shortId} not found in this project.`);
     return 1;
   }
   if (!comment.userId) {
-    deps.err(`${comment.shortId} no identifica a ninguna cuenta.`);
+    deps.err(`${comment.shortId} does not identify an account.`);
     return 1;
   }
   printComment(deps, comment);
   deps.out("");
-  deps.out("Se borrará del Worker todo lo de la cuenta que envió este comentario.");
+  deps.out("This deletes everything the Worker holds for the account that sent this comment.");
   if (!skipConfirmation) {
-    const confirmed = await deps.confirm("Escribe «enviar» para confirmar: ");
+    const confirmed = await deps.confirm("Type \"send\" to confirm: ");
     if (confirmed === null) {
-      deps.err("Sin borrar: no hay terminal para confirmar. Usa --yes solo si ya lo revisaste.");
+      deps.err("Not deleted: there is no terminal to confirm. Use --yes only if you already reviewed it.");
       return 1;
     }
     if (!confirmed) {
-      deps.out("Sin borrar.");
+      deps.out("Not deleted.");
       return 0;
     }
   }
-  deps.out(`Respuestas borradas: ${await deleteUser(config.worker, deps.fetch, comment.userId)}.`);
+  deps.out(`Replies deleted: ${await deleteUser(config.worker, deps.fetch, comment.userId)}.`);
   return 0;
 }
 
@@ -252,7 +253,7 @@ export async function run(argv: string[], deps: Deps): Promise<number> {
     }
     if (command === "reply" && shortId && (inlineText === undefined) !== (values.file === undefined)) {
       const text = (inlineText ?? (await readFile(values.file ?? "", "utf8"))).trim();
-      if (!text) throw new UsageError("El texto está vacío.");
+      if (!text) throw new UsageError("The text is empty.");
       return await reply(loadConfig(deps.env), deps, shortId, text, values.yes);
     }
     deps.err(USAGE);

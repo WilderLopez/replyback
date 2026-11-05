@@ -21,6 +21,6 @@ process.exitCode = await run(argv, {
     const prompt = createInterface({ input: process.stdin, output: process.stdout });
     const answer = await prompt.question(question);
     prompt.close();
-    return answer.trim().toLowerCase() === "enviar";
+    return answer.trim().toLowerCase() === "send";
   },
 });

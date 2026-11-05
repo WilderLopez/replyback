@@ -104,11 +104,11 @@ test("list consulta solo comentarios del proyecto y no imprime datos personales"
   assert.equal(new Headers(h.calls[0]?.init?.headers).get("authorization"), "Bearer sentry-token");
 
   assert.equal(h.out.length, 5);
-  assert.match(h.out[4] ?? "", /DEMO-E.*\[archivado\] Parece spam/);
-  assert.ok(!(h.out[3] ?? "").includes("[archivado]"));
-  assert.match(h.out[0] ?? "", /DEMO-A.*2026-10-01.*es_US.*1\.2\.3\+45.*con ref.*sin responder.*Comentario con ref/);
-  assert.match(h.out[1] ?? "", /DEMO-B.*antiguo/);
-  assert.match(h.out[2] ?? "", /DEMO-C.*sin vía/);
+  assert.match(h.out[4] ?? "", /DEMO-E.*\[archived\] Parece spam/);
+  assert.ok(!(h.out[3] ?? "").includes("[archived]"));
+  assert.match(h.out[0] ?? "", /DEMO-A.*2026-10-01.*es_US.*1\.2\.3\+45.*ref.*unanswered.*Comentario con ref/);
+  assert.match(h.out[1] ?? "", /DEMO-B.*legacy/);
+  assert.match(h.out[2] ?? "", /DEMO-C.*no route/);
   assertNoPersonalData([...h.out, ...h.err]);
   assert.ok(!(h.out[0] ?? "").includes(REF), "el ref da acceso a la respuesta");
 });
@@ -133,7 +133,7 @@ test("list --pending oculta los ya respondidos y muestra el estado de los demás
   const stored = { reply_id: "r", ref: REF, text: "t", comment: null, created_at: 1, pushed_at: 1, delivered_at: 2 };
   const shown = harness({ replies: [stored] });
   await run(["list"], shown.deps);
-  assert.match(shown.out[0] ?? "", /DEMO-A.*entregada/);
+  assert.match(shown.out[0] ?? "", /DEMO-A.*delivered/);
 
   const pending = harness({ replies: [stored] });
   await run(["list", "--pending"], pending.deps);
@@ -172,13 +172,13 @@ test("show muestra el comentario sin el ref y sus respuestas", async () => {
 test("show avisa si Sentry archivó el comentario", async () => {
   const h = harness();
   await run(["show", "DEMO-E"], h.deps);
-  assert.ok(h.out.join("\n").includes("archivado por Sentry"));
+  assert.ok(h.out.join("\n").includes("archived by Sentry"));
 });
 
 test("show avisa si el comentario no existe", async () => {
   const h = harness();
   assert.equal(await run(["show", "DEMO-Z"], h.deps), 1);
-  assert.match(h.err[0] ?? "", /No existe/);
+  assert.match(h.err[0] ?? "", /not found/);
 });
 
 test("show trata como inexistente el 400 de Sentry y no otros errores", async () => {
@@ -189,11 +189,11 @@ test("show trata como inexistente el 400 de Sentry y no otros errores", async ()
   };
   const unknown = withStatus(400);
   assert.equal(await run(["show", "DEMO-Z"], unknown.deps), 1);
-  assert.match(unknown.err[0] ?? "", /No existe/);
+  assert.match(unknown.err[0] ?? "", /not found/);
 
   const denied = withStatus(403);
   assert.equal(await run(["show", "DEMO-A"], denied.deps), 1);
-  assert.match(denied.err[0] ?? "", /Sentry respondió 403/);
+  assert.match(denied.err[0] ?? "", /Sentry responded 403/);
 });
 
 test("reply envía a un comentario con ref tras confirmar", async () => {
@@ -208,7 +208,7 @@ test("reply envía a un comentario con ref tras confirmar", async () => {
     comment_at: Date.parse("2026-10-01T10:00:00Z"),
     user_id: USER_ID,
   });
-  assert.match(h.out.at(-1) ?? "", /aviso enviado/);
+  assert.match(h.out.at(-1) ?? "", /push sent/);
   assertNoPersonalData([...h.out, ...h.err]);
 });
 
@@ -216,26 +216,26 @@ test("reply deriva el ref de un comentario antiguo", async () => {
   const h = harness({ confirm: true, sendPush: "no_token" });
   assert.equal(await run(["reply", "DEMO-B", "Hola"], h.deps), 0);
   assert.equal(JSON.parse(String(h.sends()[0]?.init?.body)).ref, LEGACY_REF);
-  assert.match(h.out.at(-1) ?? "", /cuando la app consulte/);
+  assert.match(h.out.at(-1) ?? "", /when the app checks/);
 });
 
 test("dos comentarios antiguos con el mismo ref tienen estado y respuesta propios", async () => {
   const stored = { reply_id: "r", ref: LEGACY_REF, text: "t", comment: "Comentario antiguo", created_at: 1, pushed_at: null, delivered_at: 2 };
   const shown = harness({ replies: [stored] });
   await run(["list"], shown.deps);
-  assert.match(shown.out.find((line) => line.includes("DEMO-B")) ?? "", /entregada/);
-  assert.match(shown.out.find((line) => line.includes("DEMO-D")) ?? "", /sin responder/);
+  assert.match(shown.out.find((line) => line.includes("DEMO-B")) ?? "", /delivered/);
+  assert.match(shown.out.find((line) => line.includes("DEMO-D")) ?? "", /unanswered/);
 
   const sibling = harness({ confirm: false, replies: [stored] });
   await run(["reply", "DEMO-D", "Hola"], sibling.deps);
-  assert.ok(!sibling.out.join("\n").includes("ya tiene"));
+  assert.ok(!sibling.out.join("\n").includes("already has"));
 });
 
 test("reply no envía si se responde otra cosa a la confirmación", async () => {
   const h = harness({ confirm: false });
   assert.equal(await run(["reply", "DEMO-A", "Hola"], h.deps), 0);
   assert.equal(h.sends().length, 0);
-  assert.equal(h.out.at(-1), "Sin enviar.");
+  assert.equal(h.out.at(-1), "Not sent.");
 });
 
 test("reply no envía sin terminal y sin --yes", async () => {
@@ -255,7 +255,7 @@ test("reply avisa si ya hay respuestas", async () => {
   const stored = { reply_id: "r", ref: REF, text: "t", comment: null, created_at: 1, pushed_at: 1, delivered_at: null };
   const h = harness({ confirm: false, replies: [stored] });
   await run(["reply", "DEMO-A", "Hola"], h.deps);
-  assert.ok(h.out.join("\n").includes("ya tiene 1 respuesta"));
+  assert.ok(h.out.join("\n").includes("already has 1 reply"));
 });
 
 test("reply lee el texto de un fichero", async () => {
@@ -270,14 +270,14 @@ test("reply rechaza un comentario sin vía de respuesta", async () => {
   const h = harness({ confirm: true });
   assert.equal(await run(["reply", "DEMO-C", "Hola"], h.deps), 1);
   assert.equal(h.sends().length, 0);
-  assert.match(h.err[0] ?? "", /no se puede responder/);
+  assert.match(h.err[0] ?? "", /cannot be answered/);
 });
 
 test("reply rechaza un issue con varios eventos", async () => {
   const h = harness({ confirm: true });
   assert.equal(await run(["reply", "DEMO-D", "Hola", "--yes"], h.deps), 1);
   assert.equal(h.sends().length, 0);
-  assert.match(h.err[0] ?? "", /agrupa 3 eventos/);
+  assert.match(h.err[0] ?? "", /groups 3 events/);
 });
 
 test("reply rechaza textos vacíos o demasiado largos", async () => {
@@ -293,7 +293,7 @@ test("reply rechaza textos vacíos o demasiado largos", async () => {
 test("reply devuelve error si el aviso falló, para reintentar", async () => {
   const h = harness({ sendPush: "failed" });
   assert.equal(await run(["reply", "DEMO-A", "Hola", "--yes"], h.deps), 1);
-  assert.match(h.out.at(-1) ?? "", /reintentarlo/);
+  assert.match(h.out.at(-1) ?? "", /to retry/);
 });
 
 test("forget borra la cuenta del comentario sin imprimir su ID", async () => {
@@ -301,7 +301,7 @@ test("forget borra la cuenta del comentario sin imprimir su ID", async () => {
   assert.equal(await run(["forget", "DEMO-A"], h.deps), 0);
   const call = h.calls.find((candidate) => candidate.url.endsWith("/v1/admin/delete"));
   assert.deepEqual(JSON.parse(String(call?.init?.body)), { user_id: USER_ID });
-  assert.match(h.out.at(-1) ?? "", /Respuestas borradas: 2/);
+  assert.match(h.out.at(-1) ?? "", /Replies deleted: 2/);
   assertNoPersonalData([...h.out, ...h.err]);
 });
 
@@ -334,6 +334,6 @@ test("muestra la ayuda ante un uso incorrecto", async () => {
   for (const argv of [[], ["otro"], ["show"], ["reply", "DEMO-A"], ["reply", "DEMO-A", "x", "--file", "y"], ["--desconocido"]]) {
     const h = harness();
     assert.equal(await run(argv, h.deps), 2, argv.join(" "));
-    assert.ok(h.err.join("\n").includes("Uso: replyback"));
+    assert.ok(h.err.join("\n").includes("Usage: replyback"));
   }
 });

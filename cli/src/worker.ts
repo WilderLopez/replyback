@@ -28,7 +28,7 @@ async function post(config: WorkerConfig, fetcher: typeof fetch, path: string, b
     headers: { authorization: `Bearer ${config.adminToken}`, "content-type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!response.ok) throw new WorkerError(`El Worker respondió ${response.status}`);
+  if (!response.ok) throw new WorkerError(`The Worker responded ${response.status}`);
   return response.json();
 }
 
