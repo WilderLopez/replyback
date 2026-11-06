@@ -1,28 +1,63 @@
-# replyback
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-wordmark-dark.svg">
+    <img alt="replyback" src="assets/logo-wordmark-light.svg" width="420">
+  </picture>
+</p>
 
-[![CI](https://github.com/WilderLopez/replyback/actions/workflows/ci.yml/badge.svg)](https://github.com/WilderLopez/replyback/actions/workflows/ci.yml)
+<h3 align="center">Reply inside your app to the feedback your users send through Sentry.</h3>
 
-Reply inside your app to the feedback your users send through Sentry.
+<p align="center">
+  <a href="https://github.com/WilderLopez/replyback/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/WilderLopez/replyback/ci.yml?branch=main&label=CI"></a>
+  <a href="https://github.com/WilderLopez/replyback/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/WilderLopez/replyback?color=7C5CFF&label=release"></a>
+  <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-E0529C"></a>
+  <img alt="iOS 17+" src="https://img.shields.io/badge/iOS-17%2B-0E1016?logo=apple&logoColor=white">
+  <img alt="Swift Package Manager" src="https://img.shields.io/badge/SwiftPM-compatible-F05138?logo=swift&logoColor=white">
+  <img alt="Cloudflare Workers" src="https://img.shields.io/badge/Cloudflare-Workers-F38020?logo=cloudflare&logoColor=white">
+</p>
+
+<p align="center">
+  <a href="docs/DEPLOY.md">Deploy</a> ·
+  <a href="docs/INTEGRATION-IOS.md">Integrate on iOS</a> ·
+  <a href="docs/API.md">API</a> ·
+  <a href="README.es.md">Español</a>
+</p>
+
+<p align="center">
+  <img alt="A reply typed in the replyback CLI reaches the user's iPhone as a push and appears in their support thread" src="assets/hero.png" width="100%">
+</p>
+<p align="center"><sub>Illustration with invented data. The SDK has no UI: the screen is yours.</sub></p>
 
 Sentry collects user feedback but gives you no way to answer it. replyback adds that channel without
 touching your app's backend and without email: you reply from a CLI, a Cloudflare Worker stores the reply
 and sends a push, and your app shows the comment and its reply as a thread.
 
-[Leer en español](README.es.md)
-
-```text
-App ── comment + ref ───► Sentry
- │                          ▲
- │                          │ reads comments (read-only)
- │                         CLI
- │                          │ sends the reply and the original comment
- │                          ▼
- └──── POST /v1/sync ───► Worker + D1 ──► FCM ──► push to the app
-```
-
 > [!NOTE]
 > Early stage: the iOS SDK has been tested on a real iPhone but has not shipped in an App Store release yet.
 > Android has no SDK, only a [documented API](docs/API.md).
+
+## How it works
+
+```mermaid
+sequenceDiagram
+    actor U as User
+    participant A as Your app
+    participant S as Sentry
+    actor Y as You (CLI)
+    participant W as Worker + D1
+    participant F as FCM
+
+    U->>A: Sends a comment
+    A->>S: Comment with a random key (ref)
+    A->>W: Registers the ref and push token
+    Y->>S: Reads comments (read-only)
+    Y->>W: Sends the reply and the original comment
+    W->>F: Neutral push
+    F-->>A: "You have a new reply"
+    A->>W: Syncs with the ref
+    W-->>A: Comment and reply
+    A-->>U: Shows the thread
+```
 
 ## What you get
 
@@ -31,6 +66,27 @@ App ── comment + ref ───► Sentry
 - **One deployment per project:** your own Worker, database and secrets. No central server.
 - **No backend changes:** the Worker never calls your backend.
 - **Works for old comments:** comments sent before integrating the SDK can also be answered, on iOS.
+
+## A look at the SDK
+
+No dependencies, not even on Sentry, and no UI, so threads look like the rest of your app.
+
+```swift
+import Replyback
+
+// Your feedback form: add the key, and send to Sentry as usual.
+let message = Support.client.prepareComment(text)
+SentrySDK.capture(feedback: SentryFeedback(message: message, name: name, email: email, source: .custom))
+await Support.client.sync(fcmToken: token)
+
+// Your support screen.
+ForEach(Support.client.threads) { thread in
+    Text(thread.comment ?? "")
+    ForEach(thread.replies) { reply in
+        Text(reply.text)
+    }
+}
+```
 
 ## How it handles data
 
