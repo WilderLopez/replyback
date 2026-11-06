@@ -9,7 +9,6 @@
 
 <p align="center">
   <a href="https://github.com/WilderLopez/replyback/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/WilderLopez/replyback/actions/workflows/ci.yml/badge.svg?branch=main"></a>
-  <a href="https://github.com/WilderLopez/replyback/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/WilderLopez/replyback?color=7C5CFF&label=release"></a>
   <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-E0529C"></a>
   <img alt="iOS 17+" src="https://img.shields.io/badge/iOS-17%2B-0E1016?logo=apple&logoColor=white">
   <img alt="Swift Package Manager" src="https://img.shields.io/badge/SwiftPM-compatible-F05138?logo=swift&logoColor=white">
